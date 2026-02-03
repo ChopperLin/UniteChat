@@ -26,7 +26,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 # Bump this when changing parsing behavior; exposed by /api/health?verbose=1.
-PARSER_VERSION = "2026-02-03-3"
+PARSER_VERSION = "2026-02-03-10"
 
 
 _BATCHEXECUTE_PREFIX = ")]}'"
@@ -269,8 +269,7 @@ def _normalize_math_delimiters(md: str) -> str:
     r"""Best-effort math normalization for react-markdown + remark-math.
 
     - Converts LaTeX-style delimiters \(...\), \[...\] into $...$ / $$...$$
-    - Promotes single-$ math that contains newlines into display math
-    - Ensures display math blocks are separated so remark-math can parse them
+    - Normalizes single-line $$...$$ into a stable multi-line display block
 
     This is intentionally conservative and skips fenced code blocks.
     """
@@ -288,54 +287,32 @@ def _normalize_math_delimiters(md: str) -> str:
     if last < len(md):
         parts.append((False, md[last:]))
 
+    _SINGLE_LINE_DISPLAY_RE = re.compile(r"(?m)^([ \t]*)\$\$([^\n]*?)\$\$[ \t]*$")
+
     def _normalize_segment(s: str) -> str:
         if not s:
             return s
 
-        # Common LaTeX bracket delimiters.
+        # 1) Common LaTeX bracket delimiters.
+        # These are safe to convert because they are unambiguous markers.
         s = s.replace("\\[", "$$").replace("\\]", "$$")
-        s = s.replace("\\(", "$" ).replace("\\)", "$" )
+        s = s.replace("\\(", "$").replace("\\)", "$")
 
-        # Promote multiline inline-math ($...$ containing newlines) to display math.
-        def _promote_multiline_inline(m: re.Match) -> str:
-            inner = (m.group(1) or "").strip()
-            if not inner:
-                return m.group(0)
-            return f"\n\n$$\n{inner}\n$$\n\n"
-
-        s = re.sub(
-            r"(?<!\$)\$(?!\$)([^$]*\n[^$]*?)\$(?!\$)",
-            _promote_multiline_inline,
-            s,
-            flags=re.DOTALL,
-        )
-
-        # Promote "$...$" that appears as a standalone line into display math.
-        # This helps when the model emits inline delimiters but intends a block equation.
-        def _promote_standalone_inline(m: re.Match) -> str:
+        # 2) Normalize single-line $$...$$ into a stable display-math block.
+        # IMPORTANT: only touch lines where both delimiters are present on the same line.
+        # Avoid regexes that can span across multiple $$ markers; that can corrupt inline $...$.
+        def _normalize_single_line_display(m: re.Match) -> str:
             indent = m.group(1) or ""
             inner = (m.group(2) or "").strip()
             if not inner:
                 return m.group(0)
-            # Keep leading indentation minimal; markdown treats display math as a block.
-            return f"\n\n$$\n{inner}\n$$\n\n"
+            # Preserve indentation so display blocks inside lists stay inside the list.
+            # Avoid inserting unindented blank lines; that can terminate lists and corrupt layout.
+            return f"{indent}$$\n{indent}{inner}\n{indent}$$"
 
-        s = re.sub(
-            r"(?m)^([ \t]*)\$(?!\$)([^$\n]+?)\$(?!\$)[ \t]*$",
-            _promote_standalone_inline,
-            s,
-        )
+        s = _SINGLE_LINE_DISPLAY_RE.sub(_normalize_single_line_display, s)
 
-        # Normalize display math blocks to be on their own paragraph.
-        def _normalize_display(m: re.Match) -> str:
-            inner = (m.group(1) or "").strip()
-            if not inner:
-                return m.group(0)
-            return f"\n\n$$\n{inner}\n$$\n\n"
-
-        s = re.sub(r"\$\$(.+?)\$\$", _normalize_display, s, flags=re.DOTALL)
-
-        # Clean up excessive blank lines introduced by normalization.
+        # 3) Keep output tidy; do not aggressively rewrite inline $...$.
         s = re.sub(r"\n{4,}", "\n\n\n", s)
         return s
 
@@ -512,35 +489,52 @@ def _extract_turn_timestamp_seconds(turn: Any) -> Optional[float]:
     if not isinstance(turn, list):
         return None
 
-    nums: List[float] = []
+    # Prefer explicit [seconds, nanos] pairs found near the top of the turn structure.
+    # Deep Research exports often embed many epoch-like numbers inside the report body;
+    # naively taking max() can pick those and break ordering (prompt/report inversion).
+    pairs: List[Tuple[int, float, float]] = []
+    scalars: List[Tuple[int, float]] = []
 
-    def _walk(o: Any) -> None:
+    def _walk(o: Any, depth: int) -> None:
         if isinstance(o, bool) or o is None:
             return
+
         if isinstance(o, (int, float)):
-            nums.append(float(o))
+            n = float(o)
+            if 1e9 <= n <= 2e13:
+                scalars.append((depth, n))
             return
+
         if isinstance(o, list):
+            if (
+                len(o) == 2
+                and isinstance(o[0], (int, float))
+                and isinstance(o[1], (int, float))
+                and 1e9 <= float(o[0]) <= 2e10
+                and 0.0 <= float(o[1]) < 1e9
+            ):
+                pairs.append((depth, float(o[0]), float(o[1])))
             for it in o:
-                _walk(it)
+                _walk(it, depth + 1)
             return
+
         if isinstance(o, dict):
             for v in o.values():
-                _walk(v)
+                _walk(v, depth + 1)
+            return
 
-    _walk(turn)
+    _walk(turn, 0)
 
-    # Accept Unix seconds or milliseconds.
-    candidates = [n for n in nums if 1e9 <= n <= 2e13]
-    if not candidates:
+    if pairs:
+        # Pick the shallowest pair; tie-break by larger seconds.
+        depth, sec, sub = min(pairs, key=lambda x: (x[0], -x[1], -x[2]))
+        return sec + (sub / 1e9)
+
+    if not scalars:
         return None
 
-    # Heuristic: many turns contain multiple epoch-like numbers.
-    # In image-heavy exports we observed a constant "conversation-level" timestamp repeated
-    # across all turns, plus a per-turn timestamp that changes. Picking the minimum often
-    # yields the constant value, destroying chronological ordering. Prefer the *largest*
-    # plausible timestamp, which better matches per-turn activity time.
-    n = max(candidates)
+    # Fallback: shallowest epoch-like scalar; normalize seconds vs ms.
+    depth, n = min(scalars, key=lambda x: (x[0], x[1]))
     if n >= 1e12:
         return n / 1000.0
     return n
@@ -595,6 +589,189 @@ def _extract_urls(obj: Any) -> List[str]:
                 seen.add(key)
                 urls.append(u)
     return urls
+
+
+_NOISY_SOURCE_URL_RE = re.compile(
+    r"(?:^https?://t\d\.gstatic\.com/faviconV2\b|googleusercontent\.com/(?:deep_research_confirmation_content|immersive_entry_chip)/)",
+    re.IGNORECASE,
+)
+
+
+def _filter_source_urls(urls: Sequence[str], *, limit: int = 60) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for u in urls:
+        if not u:
+            continue
+        if _NOISY_SOURCE_URL_RE.search(u) is not None:
+            continue
+        # Most useful citations are normal web URLs; drop remaining googleusercontent.
+        if "googleusercontent.com/" in u.lower():
+            continue
+        key = u.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(u)
+        if len(out) >= limit:
+            break
+    return out
+
+
+_CITATION_SINGLE_RE = re.compile(r"\[(\d{1,4})\](?!\()")
+_CITATION_SINGLE_ZH_RE = re.compile(r"【(\d{1,4})】")
+
+# Match citation groups like: [2, 15, 20] / [152, 153, 154] / [2，15，20]
+_CITATION_GROUP_RE = re.compile(
+    r"\[(\d{1,4}(?:\s*[-–—]\s*\d{1,4})?(?:\s*[,，;；]\s*\d{1,4}(?:\s*[-–—]\s*\d{1,4})?)*)\]"
+)
+
+
+def _parse_citation_group(text: str, *, max_n: int = 5000) -> List[int]:
+    raw = (text or "").strip()
+    if not raw:
+        return []
+
+    out: List[int] = []
+    for part in re.split(r"\s*[,，;；]\s*", raw):
+        p = (part or "").strip()
+        if not p:
+            continue
+        # Support simple ranges like 141-147 (any dash).
+        m = re.fullmatch(r"(\d{1,4})\s*[-–—]\s*(\d{1,4})", p)
+        if m:
+            a = int(m.group(1))
+            b = int(m.group(2))
+            if 1 <= a <= max_n and 1 <= b <= max_n:
+                lo, hi = (a, b) if a <= b else (b, a)
+                # Avoid exploding huge ranges.
+                if hi - lo <= 50:
+                    out.extend(list(range(lo, hi + 1)))
+                else:
+                    out.extend([lo, hi])
+            continue
+
+        if re.fullmatch(r"\d{1,4}", p):
+            n = int(p)
+            if 1 <= n <= max_n:
+                out.append(n)
+
+    return out
+
+
+def _extract_citation_numbers(md: str, *, max_n: int = 5000) -> List[int]:
+    if not md:
+        return []
+
+    nums: List[int] = []
+
+    # 1) Parse groups like [2, 15, 20]
+    for m in _CITATION_GROUP_RE.finditer(md):
+        nums.extend(_parse_citation_group(m.group(1), max_n=max_n))
+
+    # 2) Also accept standalone markers.
+    for m in _CITATION_SINGLE_RE.finditer(md):
+        try:
+            nums.append(int(m.group(1)))
+        except Exception:
+            continue
+    for m in _CITATION_SINGLE_ZH_RE.finditer(md):
+        try:
+            nums.append(int(m.group(1)))
+        except Exception:
+            continue
+
+    return sorted({n for n in nums if 1 <= n <= max_n})
+
+
+def _expand_citation_groups_for_links(md: str) -> str:
+    """Rewrite citation groups like [2, 15, 20] into '[2] [15] [20]'.
+
+    This enables reference-style markdown linking once we append '[n]: url' definitions.
+    """
+
+    if not md:
+        return md
+
+    def _repl(m: re.Match) -> str:
+        nums = _parse_citation_group(m.group(1))
+        if not nums:
+            return m.group(0)
+        return " " + " ".join([f"[{n}]" for n in nums])
+
+    return _CITATION_GROUP_RE.sub(_repl, md)
+
+
+_CITATION_LINKABLE_RE = re.compile(r"(?<!\[)\[(\d{1,4})\](?!\()")
+_CITATION_LINKABLE_ZH_RE = re.compile(r"【(\d{1,4})】")
+
+
+def _markdown_url_dest(url: str) -> str:
+    # Use angle brackets to avoid issues with ')' and other special chars in URLs.
+    return f"<{url}>"
+
+
+def _linkify_citations(md: str, source_urls: Sequence[str]) -> str:
+    """Replace standalone citation markers with explicit inline links.
+
+    Produces links like: [[71]](<https://example.com>) so the visible label stays '[71]'.
+    Skips fenced code blocks.
+    """
+
+    if not md or not source_urls:
+        return md
+
+    def _url_for(n: int) -> Optional[str]:
+        if 1 <= n <= len(source_urls):
+            return source_urls[n - 1]
+        return None
+
+    parts: List[Tuple[bool, str]] = []
+    last = 0
+    for m in _FENCED_CODEBLOCK_RE.finditer(md):
+        if m.start() > last:
+            parts.append((False, md[last : m.start()]))
+        parts.append((True, m.group(0)))
+        last = m.end()
+    if last < len(md):
+        parts.append((False, md[last:]))
+
+    def _linkify_segment(s: str) -> str:
+        if not s:
+            return s
+
+        def _repl(m: re.Match) -> str:
+            try:
+                n = int(m.group(1))
+            except Exception:
+                return m.group(0)
+            url = _url_for(n)
+            if not url:
+                return m.group(0)
+            return f"[[{n}]]({_markdown_url_dest(url)})"
+
+        s = _CITATION_LINKABLE_RE.sub(_repl, s)
+
+        def _repl_zh(m: re.Match) -> str:
+            try:
+                n = int(m.group(1))
+            except Exception:
+                return m.group(0)
+            url = _url_for(n)
+            if not url:
+                return m.group(0)
+            return f"[[{n}]]({_markdown_url_dest(url)})"
+
+        s = _CITATION_LINKABLE_ZH_RE.sub(_repl_zh, s)
+        return s
+
+    return "".join(seg if is_code else _linkify_segment(seg) for is_code, seg in parts)
+
+
+def _text_has_urls(text: str) -> bool:
+    if not text:
+        return False
+    return _URL_RE.search(text) is not None
 
 
 @dataclass
@@ -713,6 +890,13 @@ def parse_gemini_batchexecute_conversation(data: Dict[str, Any]) -> Dict[str, An
     except Exception as e:
         raise ValueError(f"invalid batchexecute inner json: {e}")
 
+    # Deep Research exports often store citation/source URLs in the inner payload rather than
+    # embedding them into the final report markdown. Preserve them for the UI by appending
+    # a compact link list to the final report when needed.
+    # Keep a large pool to support high citation numbers (e.g. [141]). We'll only render
+    # what's necessary in the final markdown.
+    source_urls = _filter_source_urls(_extract_urls(inner), limit=5000)
+
     turns = _parse_turns(inner)
 
     messages: List[Dict[str, Any]] = []
@@ -729,6 +913,59 @@ def parse_gemini_batchexecute_conversation(data: Dict[str, Any]) -> Dict[str, An
             if thinking:
                 msg["thinking"] = [{"title": "思考", "content": thinking}]
             messages.append(msg)
+
+    # Append sources to the final long report (Deep Research).
+    # Many exports store citations separately from the final report markdown.
+    if source_urls:
+        last_assistant_idx = None
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "assistant":
+                last_assistant_idx = i
+                break
+
+        if last_assistant_idx is not None:
+            content = _safe_str(messages[last_assistant_idx].get("content"))
+            content_stripped = content.lstrip()
+            looks_like_report = (
+                len(content) >= 4000
+                and content_stripped.startswith("#")
+                and ("\n## " in content or "\n### " in content)
+            )
+
+            if looks_like_report and "\n### 引用链接\n" not in content and "\n### Sources\n" not in content:
+                # Make grouped citations linkable and turn them into explicit inline links.
+                content = _expand_citation_groups_for_links(content)
+                content = _linkify_citations(content, source_urls)
+                cited = _extract_citation_numbers(content)
+
+                lines: List[str] = []
+                if cited:
+                    # Render only cited numbers, preserving their numeric meaning.
+                    # Citations are assumed 1-based indices into the filtered source list.
+                    shown = 0
+                    max_lines = 300
+                    for n in cited:
+                        if shown >= max_lines:
+                            lines.append(f"- …（已截断，仅展示前 {max_lines} 个引用编号）")
+                            break
+                        url = source_urls[n - 1] if 1 <= n <= len(source_urls) else None
+                        if url:
+                            lines.append(f"- [[{n}]]({_markdown_url_dest(url)}) {url}")
+                        else:
+                            lines.append(f"- [{n}] （未找到对应链接）")
+                        shown += 1
+                else:
+                    # No explicit citation markers: show a compact numbered list.
+                    max_lines = 120
+                    for i, u in enumerate(source_urls[:max_lines], start=1):
+                        lines.append(f"- [[{i}]]({_markdown_url_dest(u)}) {u}")
+                    if len(source_urls) > max_lines:
+                        lines.append(f"- …（共 {len(source_urls)} 条，已截断）")
+
+                if lines:
+                    block = "\n\n---\n\n### 引用链接\n" + "\n".join(lines)
+                    content = content.rstrip() + block + "\n"
+                    messages[last_assistant_idx]["content"] = content
 
     fetched_at = _iso_to_epoch_seconds(_safe_str(data.get("fetched_at")))
     conv_id = _safe_str(data.get("conversation_id"))
