@@ -1,0 +1,195 @@
+/* Citation样式 - Claude风格 */
+.citation {
+  display: inline;
+}
+
+.citation-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid #D4C4B0;
+  background: linear-gradient(180deg, #F7F3EE 0%, #F2EDE7 100%);
+  color: #8B6F47;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 14px;
+  cursor: pointer;
+  /* 弹性回弹过渡 - 松开时有轻微过冲效果 */
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background 0.1s ease-out, 
+              border-color 0.1s ease-out, 
+              box-shadow 0.1s ease-out;
+  vertical-align: baseline;
+  line-height: 1.4;
+  box-shadow: 0 1px 2px rgba(42, 37, 35, 0.06);
+}
+
+.citation-pill:hover {
+  background: linear-gradient(180deg, #EDE7DD 0%, #E5DDD1 100%);
+  border-color: #C4B49F;
+  box-shadow: 0 2px 4px rgba(42, 37, 35, 0.1);
+}
+
+/* 按下时立即响应 - 0ms 延迟 */
+.citation-pill:active {
+  transform: scale(0.93);
+  transition: transform 0s;
+  background: linear-gradient(180deg, #E5DDD1 0%, #DDD5C7 100%);
+  box-shadow: 0 1px 2px rgba(42, 37, 35, 0.06);
+}
+
+/* Citation弹出框 */
+.citation-popover-portal {
+  background: #FDFBF9;
+  border: 1px solid #E5E0DB;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(42, 37, 35, 0.2);
+  min-width: 320px;
+  width: 360px;
+  max-width: 480px;
+  overflow: hidden;
+}
+
+.citation-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: #F7F5F2;
+  border-bottom: 1px solid #E5E0DB;
+}
+
+.citation-popover-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1A1715;
+  letter-spacing: -0.01em;
+}
+
+.citation-popover-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.citation-nav {
+  border: 1px solid #D4C4B0;
+  background: #FDFBF9;
+  color: #5A504A;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  /* 弹性回弹过渡 */
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background-color 0.1s ease-out, 
+              border-color 0.1s ease-out;
+  font-weight: 600;
+}
+
+.citation-nav:hover:not(:disabled) {
+  background: #E8E3DB;
+  border-color: #C4B49F;
+}
+
+/* 按下时立即响应 - 0ms 延迟 */
+.citation-nav:active:not(:disabled) {
+  transform: scale(0.9);
+  transition: transform 0s;
+  background: #DDD5C7;
+}
+
+.citation-nav:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.citation-count {
+  font-size: 12px;
+  color: #8A7F76;
+  min-width: 40px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.citation-popover-body {
+  padding: 14px;
+}
+
+.citation-card {
+  display: block;
+  padding: 14px 16px;
+  background: #FFFFFF;
+  border: 1px solid #E5E0DB;
+  border-radius: 10px;
+  text-decoration: none;
+  /* 弹性回弹过渡 */
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background-color 0.1s ease-out, 
+              border-color 0.1s ease-out, 
+              box-shadow 0.1s ease-out;
+  box-shadow: 0 1px 3px rgba(42, 37, 35, 0.04);
+  min-height: 72px;
+}
+
+.citation-card:hover {
+  background: #F7F5F2;
+  border-color: #D4C4B0;
+  box-shadow: 0 3px 8px rgba(42, 37, 35, 0.08);
+}
+
+/* 点击时即时反馈 - 0ms 延迟 */
+.citation-card:active {
+  transform: scale(0.98);
+  transition: transform 0s;
+  background: #F0EBE5;
+}
+
+.citation-card-host {
+  font-size: 11px;
+  color: #A89B8F;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+
+.citation-card-title {
+  font-size: 13.5px;
+  color: #2A2523;
+  line-height: 1.5;
+  font-weight: 500;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  min-height: 3em;
+}
+
+/* 上标引用样式 */
+.citation-sup {
+  font-size: 0.8em;
+  vertical-align: super;
+  line-height: 0;
+}
+
+.citation-link {
+  color: #A67C52;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.15s;
+  padding: 1px 2px;
+}
+
+.citation-link:hover {
+  color: #8B6F47;
+  text-decoration: underline;
+}
+
+/* 搜索框loading动画 */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
