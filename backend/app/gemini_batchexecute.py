@@ -25,6 +25,10 @@ from urllib.parse import urlparse
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
+# Bump this when changing parsing behavior; exposed by /api/health?verbose=1.
+PARSER_VERSION = "2026-02-03"
+
+
 _BATCHEXECUTE_PREFIX = ")]}'"
 
 
@@ -168,14 +172,31 @@ def _pick_best_text(candidates: Sequence[str]) -> str:
     return best
 
 
-_THINKING_HINT_RE = re.compile(r"\b(thinking|thought)\b|思考|推理|<think>", re.IGNORECASE)
+# NOTE: Keep "thinking" detection conservative.
+# Deep Research-style reports can mention the word "thinking" in normal prose; only treat
+# it as thinking when it's clearly used as a label/header or an explicit <think> tag.
+_THINKING_XML_RE = re.compile(r"</?think>", re.IGNORECASE)
+_THINKING_HINT_EN_LABEL_RE = re.compile(r"(?:^|\n)\s*(?:thinking|thoughts?)\s*[:：]", re.IGNORECASE)
+_THINKING_HINT_EN_HEADER_RE = re.compile(r"(?:^|\n)\s*#+\s*(?:thinking|thoughts?)\s*(?:$|\n)", re.IGNORECASE)
+
+# Chinese hints are only treated as thinking when they are clearly used as a label/header
+# (e.g., "思考:" or "# 思考"). Avoid matching common prose usage such as "归纳推理".
+_THINKING_HINT_ZH_LABEL_RE = re.compile(
+    r"(?:^|\n)\s*(?:思考过程|推理过程|思考)\s*[:：]",
+    re.IGNORECASE,
+)
+
+_THINKING_HINT_ZH_HEADER_RE = re.compile(
+    r"(?:^|\n)\s*#+\s*(?:思考过程|推理过程|思考)\s*(?:$|\n)",
+    re.IGNORECASE,
+)
 
 
 _THINKING_STYLE_RE = re.compile(
     r"\b("
     r"investigating|analyzing|examining|unpacking|pinpointing|tracing|isolating|"
     r"verifying|assessing|understanding|reframing|refining|constructing|formulating|"
-    r"diagnosing|evaluating|dissecting|connecting the dots|unveiling|"
+    r"diagnosing|evaluating|dissecting|connecting the dots|unveiling"
     r")\b",
     re.IGNORECASE,
 )
@@ -193,19 +214,26 @@ def _thinking_score(text: str) -> int:
         return 0
 
     score = 0
-    has_hint = _THINKING_HINT_RE.search(t) is not None
+    has_hint = (
+        _THINKING_XML_RE.search(t) is not None
+        or _THINKING_HINT_EN_LABEL_RE.search(t) is not None
+        or _THINKING_HINT_EN_HEADER_RE.search(t) is not None
+        or _THINKING_HINT_ZH_LABEL_RE.search(t) is not None
+        or _THINKING_HINT_ZH_HEADER_RE.search(t) is not None
+    )
     has_style = _THINKING_STYLE_RE.search(t) is not None
     has_narration = _THINKING_NARRATION_RE.search(t) is not None
 
-    # Avoid misclassifying structured final answers: only treat as thinking if we see
-    # explicit thinking-style signals.
-    if not (has_hint or has_style or has_narration):
+    # Avoid misclassifying structured final answers. Style verbs (e.g. "understanding")
+    # often appear in normal prose, so only count them when paired with explicit hint
+    # or first-person narration.
+    if not (has_hint or has_narration):
         return 0
 
     if has_hint:
         score += 80
-    if has_style:
-        score += 80
+    if has_style and (has_hint or has_narration):
+        score += 40
     if has_narration:
         score += 60
 
@@ -266,6 +294,58 @@ def _extract_response_and_thinking(turn: Any) -> Tuple[str, Optional[str]]:
         return "", None
 
     response_slot = turn[3]
+
+    # 1) Prefer structural extraction of the primary response.
+    # In observed batchexecute payloads, assistant outputs usually appear under a list like:
+    #   ["rc_xxx", ["<markdown text>"], ...]
+    # Thinking (when present) may also exist as free-form strings elsewhere in the slot.
+    rc_texts: List[str] = []
+
+    def _walk_rc(o: Any) -> None:
+        if isinstance(o, list):
+            if len(o) >= 2 and isinstance(o[0], str) and o[0].startswith("rc_"):
+                payload = o[1]
+                if isinstance(payload, list):
+                    parts = [p.strip("\r\n ") for p in payload if isinstance(p, str) and p.strip()]
+                    if parts:
+                        rc_texts.append("\n".join(parts).strip())
+            for it in o:
+                _walk_rc(it)
+        elif isinstance(o, dict):
+            for v in o.values():
+                _walk_rc(v)
+
+    _walk_rc(response_slot)
+
+    def _final_score(text: str) -> int:
+        t = (text or "").strip()
+        if not t:
+            return -10**9
+        score = len(t)
+        if "\n" in t:
+            score += 80
+        if "```" in t:
+            score += 120
+        if "#" in t or "*" in t or "- " in t:
+            score += 20
+
+        # Deep Research exports sometimes include short confirmation/link-only blobs.
+        # Prefer the actual report body over these.
+        tl = t.lower()
+        if "googleusercontent.com/deep_research_confirmation_content" in tl:
+            score -= 8000
+        if "googleusercontent.com/immersive_entry_chip" in tl:
+            score -= 8000
+
+        # Strongly down-rank obvious thinking narrations; these are usually not the final answer.
+        if _thinking_score(t) >= 60:
+            score -= 10000
+        return score
+
+    # We will pick the best "final answer" candidate across both structured rc_* payloads
+    # and unstructured strings (Deep Research exports sometimes embed the full report outside
+    # the rc_* response payload).
+    response = ""
     strings_raw = [s for s in _iter_strings(response_slot) if isinstance(s, str)]
     strings = _dedupe_preserve_order([s.strip("\r\n ") for s in strings_raw if s and s.strip()])
 
@@ -279,23 +359,39 @@ def _extract_response_and_thinking(turn: Any) -> Tuple[str, Optional[str]]:
         if len(s) < 20:
             continue
 
+        # Prefer separating "thinking" and "final answer".
+
         ts = _thinking_score(s)
         if ts >= 60 and len(s) >= 120:
             thinking_candidates.append(s)
         else:
             final_candidates.append(s)
 
+    # Build the response candidate pool.
+    response_pool: List[str] = []
+    response_pool.extend([t for t in rc_texts if isinstance(t, str) and t.strip()])
+    response_pool.extend(final_candidates)
+
+    if response_pool:
+        # Prefer the best-scoring non-thinking content as the final answer.
+        response = max(response_pool, key=_final_score).strip()
+
     thinking = None
     if thinking_candidates:
         # Pick the most "thinking-like"; tie-break by length.
         thinking = max(thinking_candidates, key=lambda x: (_thinking_score(x), len(x)))
 
-    response = ""
-    if final_candidates:
-        response = _pick_best_text(final_candidates)
-    else:
-        # Fallback: if we only have thinking, at least render it as content.
-        response = _pick_best_text(strings)
+    if not response:
+        if final_candidates:
+            response = _pick_best_text(final_candidates)
+        else:
+            # Fallback: if we only have thinking, at least render it as content.
+            response = _pick_best_text(strings)
+
+    # Don't duplicate: if thinking overlaps the selected response, drop it.
+    if thinking and response:
+        if thinking == response or thinking in response or response in thinking:
+            thinking = None
 
     return response, thinking
 
@@ -438,7 +534,56 @@ def parse_gemini_batchexecute_conversation(data: Dict[str, Any]) -> Dict[str, An
         inner_str = None
 
     if not inner_str:
-        raise ValueError("invalid batchexecute export: missing inner payload")
+        # Some exports only contain a minimal batchexecute envelope without the inner payload
+        # (e.g. access denied / fetch failure). Return a stub conversation instead of
+        # throwing, so the UI can still render the item.
+        def _extract_error_codes(o: Any) -> List[str]:
+            codes: List[str] = []
+
+            def _walk(x: Any) -> None:
+                if isinstance(x, list):
+                    # Pattern like: ["e", 4, null, null, 140]
+                    if x and x[0] == "e":
+                        for v in x[1:]:
+                            if isinstance(v, (int, float)):
+                                codes.append(str(int(v)))
+                    for it in x:
+                        _walk(it)
+                elif isinstance(x, dict):
+                    for v in x.values():
+                        _walk(v)
+
+            _walk(o)
+            return _dedupe_preserve_order(codes)
+
+        codes = _extract_error_codes(outer)
+        code_str = f" (error codes: {', '.join(codes)})" if codes else ""
+
+        fetched_at = _iso_to_epoch_seconds(_safe_str(data.get("fetched_at")))
+        conv_id = _safe_str(data.get("conversation_id"))
+        title = _safe_str(data.get("title"))
+
+        meta = {
+            "source": "gemini_export",
+            "conversation_id": conv_id,
+            "fetched_at": fetched_at,
+            "model_slug": _safe_str(data.get("model")) or "gemini",
+            "create_time": None,
+            "update_time": fetched_at,
+        }
+
+        messages: List[Dict[str, Any]] = [
+            {
+                "role": "assistant",
+                "ts": fetched_at,
+                "content": (
+                    "[Gemini 导出解析提示] 该条记录缺少 batchexecute 的 inner payload，可能是导出/抓取失败或访问受限"
+                    + code_str
+                ),
+            }
+        ]
+
+        return {"title": title, "messages": messages, "meta": meta}
 
     try:
         inner = json.loads(inner_str)
@@ -452,16 +597,11 @@ def parse_gemini_batchexecute_conversation(data: Dict[str, Any]) -> Dict[str, An
         if t.prompt:
             messages.append({"role": "user", "ts": t.ts, "content": t.prompt})
 
-        if t.thinking:
-            messages.append({
-                "role": "assistant",
-                "ts": t.ts,
-                "thinking": [{"title": "思考", "content": t.thinking}],
-                "content": "",
-            })
-
-        if t.response_md:
-            messages.append({"role": "assistant", "ts": t.ts, "content": t.response_md})
+        if t.response_md or t.thinking:
+            msg: Dict[str, Any] = {"role": "assistant", "ts": t.ts, "content": t.response_md or ""}
+            if t.thinking:
+                msg["thinking"] = [{"title": "思考", "content": t.thinking}]
+            messages.append(msg)
 
     fetched_at = _iso_to_epoch_seconds(_safe_str(data.get("fetched_at")))
     conv_id = _safe_str(data.get("conversation_id"))

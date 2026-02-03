@@ -112,11 +112,24 @@ data/
 ```
 
 启动后访问：
--  **前端界面**：http://localhost:3000
--  **后端 API**：http://127.0.0.1:5001/api/health
+-  **前端界面**：http://localhost:3847
+-  **后端 API**：http://127.0.0.1:5847/api/health
 
-> 说明：Windows 某些环境/安全软件可能会拦截端口 5000 的监听。
-> 项目默认后端端口已切到 5001，并支持通过环境变量覆盖：`BACKEND_HOST`、`BACKEND_PORT`。
+> 说明：端口可通过环境变量覆盖：`BACKEND_HOST`、`BACKEND_PORT`。前端端口可通过 `VITE_PORT` 覆盖。
+
+## Gemini 导出支持（普通对话 / Deep Research）
+
+本项目支持解析 `data/gemini_export_*/*.json`（Google Gemini Web 导出的 `batchexecute_raw`）。
+
+**前端依赖的字段契约**
+- `messages[].content`：主展示正文（最终回答/报告，永远优先展示）
+- `messages[].thinking`（可选）：思考过程步骤数组（用于 `ThinkingBlock` 展示；不会把最终回答误放进去）
+
+**回归校验（推荐）**
+```bash
+D:/UGit/UniteChat/.venv/Scripts/python.exe scripts/verify_gemini_parsing.py
+D:/UGit/UniteChat/.venv/Scripts/python.exe scripts/smoke_gemini_exports.py --limit 80
+```
 
 ### 四、单独启动（开发调试）
 
@@ -200,7 +213,7 @@ Vite 开发服务器已配置 API 代理（`vite.config.js`）：
 ```javascript
 proxy: {
   '/api': {
-      target: `http://${process.env.BACKEND_HOST || '127.0.0.1'}:${process.env.BACKEND_PORT || '5001'}`,
+      target: `http://${process.env.BACKEND_HOST || '127.0.0.1'}:${process.env.BACKEND_PORT || '5847'}`,
     changeOrigin: true
   }
 }

@@ -329,7 +329,40 @@ def search_conversations():
 @api.route('/health', methods=['GET'])
 def health_check():
     """健康检查"""
-    return jsonify({'status': 'ok'})
+    verbose = (request.args.get('verbose') or '').strip().lower() in {'1', 'true', 'yes'}
+    if not verbose:
+        return jsonify({'status': 'ok'})
+
+    import sys
+    import importlib
+    info = {
+        'status': 'ok',
+        'python': {
+            'executable': sys.executable,
+            'version': sys.version,
+        },
+        'modules': {},
+    }
+
+    for mod_name in ['app.gemini_batchexecute', 'app.parser', 'app.routes', 'app.scanner']:
+        try:
+            m = importlib.import_module(mod_name)
+            info['modules'][mod_name] = {
+                'file': getattr(m, '__file__', None),
+            }
+        except Exception as e:
+            info['modules'][mod_name] = {
+                'error': str(e),
+            }
+
+    # Expose an explicit parser version string if present.
+    try:
+        gb = importlib.import_module('app.gemini_batchexecute')
+        info['gemini_parser_version'] = getattr(gb, 'PARSER_VERSION', None)
+    except Exception:
+        info['gemini_parser_version'] = None
+
+    return jsonify(info)
 
 
 @api.route('/shutdown', methods=['POST'])

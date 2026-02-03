@@ -5,6 +5,10 @@ chcp 65001 >nul
 set "ROOT=%~dp0"
 set "ROOT_DIR=%ROOT:~0,-1%"
 
+REM Keep ports consistent with start.bat
+set "BACKEND_PORT=5847"
+set "FRONTEND_PORT=3847"
+
 set "SILENT=0"
 if /I "%~1"=="/silent" set "SILENT=1"
 
@@ -22,13 +26,23 @@ if "%SILENT%"=="0" (
 )
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\kill_project_process.ps1" -Root "%ROOT_DIR%" -TargetPidFiles "%ROOT%logs\backend.pid" "%ROOT%logs\frontend.pid" >nul 2>&1
 
-if "%SILENT%"=="0" echo [1/3] 正在关闭后端服务 (端口 5000/5001)...
+if "%SILENT%"=="0" echo [1/3] 正在关闭后端服务 (端口 %BACKEND_PORT%)...
 REM 使用 PortsCsv 一次性传参，减少 PowerShell 启动开销
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\kill_project_process.ps1" -Root "%ROOT_DIR%" -PortsCsv "5000,5001" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\kill_project_process.ps1" -Root "%ROOT_DIR%" -PortsCsv "%BACKEND_PORT%" >nul 2>&1
+
+REM Fallback: if the port is still listening, force-kill the owning PID.
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%BACKEND_PORT%" ^| findstr LISTENING') do (
+  taskkill /PID %%P /F >nul 2>&1
+)
 
 if "%SILENT%"=="0" echo.
-if "%SILENT%"=="0" echo [2/3] 正在关闭前端服务 (端口 3000)...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\kill_project_process.ps1" -Root "%ROOT_DIR%" -PortsCsv "3000" >nul 2>&1
+if "%SILENT%"=="0" echo [2/3] 正在关闭前端服务 (端口 %FRONTEND_PORT%)...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\kill_project_process.ps1" -Root "%ROOT_DIR%" -PortsCsv "%FRONTEND_PORT%" >nul 2>&1
+
+REM Fallback: if the port is still listening, force-kill the owning PID.
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%FRONTEND_PORT%" ^| findstr LISTENING') do (
+  taskkill /PID %%P /F >nul 2>&1
+)
 
 if "%SILENT%"=="0" echo.
 if "%SILENT%"=="0" echo [3/3] 正在关闭相关终端窗口...

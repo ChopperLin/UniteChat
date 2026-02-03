@@ -22,13 +22,26 @@ echo [1/3] Stopping old processes...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\kill_project_process.ps1" -Root "%ROOT_DIR%" -TargetPidFiles "%ROOT%logs\backend.pid" "%ROOT%logs\frontend.pid" >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\kill_project_process.ps1" -Root "%ROOT_DIR%" -PortsCsv "%BACKEND_PORT%,%FRONTEND_PORT%" >nul 2>&1
 
+REM Ensure ports are actually free; otherwise start.bat can accidentally succeed
+REM by talking to a stale server that survived the kill attempt.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\assert_ports_free.ps1" -PortsCsv "%BACKEND_PORT%,%FRONTEND_PORT%" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Ports are still in use: %BACKEND_PORT% or %FRONTEND_PORT%.
+    echo         Please run stop.bat again, or kill the listening PIDs on these ports.
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\assert_ports_free.ps1" -PortsCsv "%BACKEND_PORT%,%FRONTEND_PORT%" -ShowDetails
+    echo.
+    endlocal
+    exit /b 1
+)
+
 timeout /t 1 /nobreak >nul
 
 echo [2/3] Starting backend...
 powershell -NoProfile -WindowStyle Hidden -Command "$p=Start-Process -WindowStyle Hidden -PassThru -FilePath cmd.exe -WorkingDirectory '%BACKEND%' -ArgumentList '/c','set BACKEND_HOST=%BACKEND_HOST%&& set BACKEND_PORT=%BACKEND_PORT%&& run_hidden.cmd'; Set-Content -Encoding ASCII -Path '%ROOT%logs\backend.pid' -Value $p.Id" >nul 2>&1
 
 set "BACKEND_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/health"
-powershell -NoProfile -Command "$url='%BACKEND_URL%'; for($i=0;$i -lt 20;$i++){ try { $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Uri $url; if($r.StatusCode -eq 200){ exit 0 } } catch {} Start-Sleep -Seconds 1 }; exit 1" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\wait_http_ok.ps1" -Url "%BACKEND_URL%" -Retries 20 -DelaySeconds 1 -TimeoutSec 1 >nul 2>&1
 if errorlevel 1 (
     echo.
     echo [ERROR] Backend failed to start. Check logs\flask.log
@@ -40,9 +53,15 @@ if errorlevel 1 (
 echo [3/3] Starting frontend...
 powershell -NoProfile -WindowStyle Hidden -Command "$p=Start-Process -WindowStyle Hidden -PassThru -FilePath cmd.exe -WorkingDirectory '%FRONTEND%' -ArgumentList '/c','set VITE_PORT=%FRONTEND_PORT%&& run_hidden.cmd'; Set-Content -Encoding ASCII -Path '%ROOT%logs\frontend.pid' -Value $p.Id" >nul 2>&1
 
-powershell -NoProfile -Command "for($i=0;$i -lt 20;$i++){ try { $c=New-Object System.Net.Sockets.TcpClient; $c.Connect('localhost',%FRONTEND_PORT%); $c.Close(); exit 0 } catch {} Start-Sleep -Milliseconds 500 }; exit 1" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\wait_tcp_open.ps1" -HostName "localhost" -Port %FRONTEND_PORT% -Retries 20 -DelayMilliseconds 500 >nul 2>&1
 if errorlevel 1 (
-    echo [WARN] Frontend may not be fully started. Check logs\vite.log
+    echo.
+    echo [ERROR] Frontend failed to start on port %FRONTEND_PORT%.
+    echo         Check logs\vite.log
+    echo.
+    call "%ROOT%stop.bat" /silent >nul 2>&1
+    endlocal
+    exit /b 1
 )
 
 echo.
