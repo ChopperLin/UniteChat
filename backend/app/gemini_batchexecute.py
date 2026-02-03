@@ -26,7 +26,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 # Bump this when changing parsing behavior; exposed by /api/health?verbose=1.
-PARSER_VERSION = "2026-02-03"
+PARSER_VERSION = "2026-02-03-3"
 
 
 _BATCHEXECUTE_PREFIX = ")]}'"
@@ -262,6 +262,103 @@ def _dedupe_preserve_order(items: Sequence[str]) -> List[str]:
     return out
 
 
+_FENCED_CODEBLOCK_RE = re.compile(r"(^```[\s\S]*?^```\s*$)", re.MULTILINE)
+
+
+def _normalize_math_delimiters(md: str) -> str:
+    r"""Best-effort math normalization for react-markdown + remark-math.
+
+    - Converts LaTeX-style delimiters \(...\), \[...\] into $...$ / $$...$$
+    - Promotes single-$ math that contains newlines into display math
+    - Ensures display math blocks are separated so remark-math can parse them
+
+    This is intentionally conservative and skips fenced code blocks.
+    """
+
+    if not isinstance(md, str) or not md.strip():
+        return md or ""
+
+    parts: List[Tuple[bool, str]] = []
+    last = 0
+    for m in _FENCED_CODEBLOCK_RE.finditer(md):
+        if m.start() > last:
+            parts.append((False, md[last : m.start()]))
+        parts.append((True, m.group(0)))
+        last = m.end()
+    if last < len(md):
+        parts.append((False, md[last:]))
+
+    def _normalize_segment(s: str) -> str:
+        if not s:
+            return s
+
+        # Common LaTeX bracket delimiters.
+        s = s.replace("\\[", "$$").replace("\\]", "$$")
+        s = s.replace("\\(", "$" ).replace("\\)", "$" )
+
+        # Promote multiline inline-math ($...$ containing newlines) to display math.
+        def _promote_multiline_inline(m: re.Match) -> str:
+            inner = (m.group(1) or "").strip()
+            if not inner:
+                return m.group(0)
+            return f"\n\n$$\n{inner}\n$$\n\n"
+
+        s = re.sub(
+            r"(?<!\$)\$(?!\$)([^$]*\n[^$]*?)\$(?!\$)",
+            _promote_multiline_inline,
+            s,
+            flags=re.DOTALL,
+        )
+
+        # Promote "$...$" that appears as a standalone line into display math.
+        # This helps when the model emits inline delimiters but intends a block equation.
+        def _promote_standalone_inline(m: re.Match) -> str:
+            indent = m.group(1) or ""
+            inner = (m.group(2) or "").strip()
+            if not inner:
+                return m.group(0)
+            # Keep leading indentation minimal; markdown treats display math as a block.
+            return f"\n\n$$\n{inner}\n$$\n\n"
+
+        s = re.sub(
+            r"(?m)^([ \t]*)\$(?!\$)([^$\n]+?)\$(?!\$)[ \t]*$",
+            _promote_standalone_inline,
+            s,
+        )
+
+        # Normalize display math blocks to be on their own paragraph.
+        def _normalize_display(m: re.Match) -> str:
+            inner = (m.group(1) or "").strip()
+            if not inner:
+                return m.group(0)
+            return f"\n\n$$\n{inner}\n$$\n\n"
+
+        s = re.sub(r"\$\$(.+?)\$\$", _normalize_display, s, flags=re.DOTALL)
+
+        # Clean up excessive blank lines introduced by normalization.
+        s = re.sub(r"\n{4,}", "\n\n\n", s)
+        return s
+
+    out = "".join(seg if is_code else _normalize_segment(seg) for is_code, seg in parts)
+    return out
+
+
+_GOOGLE_IMG_HOST_RE = re.compile(r"https?://(?:lh3\.)?googleusercontent\.com/", re.IGNORECASE)
+_MIME_IMAGE_RE = re.compile(r"\bimage/(?:png|jpe?g|gif|webp|bmp|tiff?)\b", re.IGNORECASE)
+
+
+def _turn_likely_has_image(turn: Any) -> bool:
+    for s in _iter_strings(turn):
+        t = (s or "").strip()
+        if not t:
+            continue
+        if _MIME_IMAGE_RE.search(t) is not None:
+            return True
+        if _GOOGLE_IMG_HOST_RE.search(t) is not None:
+            return True
+    return False
+
+
 def _extract_prompt_from_turn(turn: Any) -> str:
     """Best-effort prompt extraction.
 
@@ -275,16 +372,31 @@ def _extract_prompt_from_turn(turn: Any) -> str:
     if isinstance(slot, list) and slot:
         first = slot[0]
         if isinstance(first, list) and first and all(isinstance(x, str) for x in first):
-            return "\n".join([x for x in first if x.strip()]).strip()
+            prompt = "\n".join([x for x in first if x.strip()]).strip()
+            # Some exports represent an image-only prompt as a synthetic filename.
+            if re.fullmatch(r"image_[0-9a-fA-F]{4,}\.(?:png|jpe?g|gif|webp|bmp|tiff?)", prompt.strip() or ""):
+                return "[图片：导出未包含原图]"
+            return prompt
         if all(isinstance(x, str) for x in slot):
-            return "\n".join([x for x in slot if x.strip()]).strip()
+            prompt = "\n".join([x for x in slot if x.strip()]).strip()
+            if re.fullmatch(r"image_[0-9a-fA-F]{4,}\.(?:png|jpe?g|gif|webp|bmp|tiff?)", prompt.strip() or ""):
+                return "[图片：导出未包含原图]"
+            return prompt
 
     # Fallback: first short-ish string list
     for obj in (slot, turn):
         for s in _iter_strings(obj):
             t = s.strip()
             if 1 < len(t) <= 400 and "\n" not in t and not _ID_LIKE_RE.match(t):
+                if re.fullmatch(r"image_[0-9a-fA-F]{4,}\.(?:png|jpe?g|gif|webp|bmp|tiff?)", t):
+                    return "[图片：导出未包含原图]"
                 return t
+
+    # If the prompt text is missing (common when the first user turn is an image-only prompt
+    # and the export omits the image payload), preserve a placeholder so chronology and
+    # context remain visible.
+    if _turn_likely_has_image(turn):
+        return "[图片：导出未包含原图]"
 
     return ""
 
@@ -423,8 +535,12 @@ def _extract_turn_timestamp_seconds(turn: Any) -> Optional[float]:
     if not candidates:
         return None
 
-    # Prefer the smallest plausible timestamp in the structure (often the actual one).
-    n = min(candidates)
+    # Heuristic: many turns contain multiple epoch-like numbers.
+    # In image-heavy exports we observed a constant "conversation-level" timestamp repeated
+    # across all turns, plus a per-turn timestamp that changes. Picking the minimum often
+    # yields the constant value, destroying chronological ordering. Prefer the *largest*
+    # plausible timestamp, which better matches per-turn activity time.
+    n = max(candidates)
     if n >= 1e12:
         return n / 1000.0
     return n
@@ -511,9 +627,16 @@ def _parse_turns(inner: Any) -> List[GeminiBatchexecuteTurn]:
 
         out.append(GeminiBatchexecuteTurn(prompt=prompt, response_md=resp, thinking=thinking, ts=ts))
 
-    # Exports appear to be reverse-chronological; use timestamps when present.
-    if any(t.ts is not None for t in out):
+    # Ordering:
+    # - Batchexecute exports are commonly reverse-chronological.
+    # - Timestamps may be missing or duplicated; only sort when we have informative ts.
+    ts_vals = [t.ts for t in out if t.ts is not None]
+    distinct_ts = len(set(ts_vals))
+    if distinct_ts >= 2:
         out.sort(key=lambda x: (x.ts is None, x.ts or 0.0))
+    else:
+        # No useful timestamp signal -> fall back to the common batchexecute ordering.
+        out.reverse()
 
     return out
 
@@ -594,13 +717,17 @@ def parse_gemini_batchexecute_conversation(data: Dict[str, Any]) -> Dict[str, An
 
     messages: List[Dict[str, Any]] = []
     for t in turns:
-        if t.prompt:
-            messages.append({"role": "user", "ts": t.ts, "content": t.prompt})
+        prompt = _normalize_math_delimiters(t.prompt) if t.prompt else ""
+        resp_md = _normalize_math_delimiters(t.response_md) if t.response_md else ""
+        thinking = _normalize_math_delimiters(t.thinking) if isinstance(t.thinking, str) else None
 
-        if t.response_md or t.thinking:
-            msg: Dict[str, Any] = {"role": "assistant", "ts": t.ts, "content": t.response_md or ""}
-            if t.thinking:
-                msg["thinking"] = [{"title": "思考", "content": t.thinking}]
+        if prompt:
+            messages.append({"role": "user", "ts": t.ts, "content": prompt})
+
+        if resp_md or thinking:
+            msg: Dict[str, Any] = {"role": "assistant", "ts": t.ts, "content": resp_md or ""}
+            if thinking:
+                msg["thinking"] = [{"title": "思考", "content": thinking}]
             messages.append(msg)
 
     fetched_at = _iso_to_epoch_seconds(_safe_str(data.get("fetched_at")))
