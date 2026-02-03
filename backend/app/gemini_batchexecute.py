@@ -406,6 +406,14 @@ def _extract_response_and_thinking(turn: Any) -> Tuple[str, Optional[str]]:
 
     _walk_rc(response_slot)
 
+    def _looks_like_report(text: str) -> bool:
+        t = (text or "").lstrip()
+        if len(t) < 4000:
+            return False
+        if not t.startswith("#"):
+            return False
+        return ("\n## " in t) or ("\n### " in t)
+
     def _final_score(text: str) -> int:
         t = (text or "").strip()
         if not t:
@@ -456,14 +464,19 @@ def _extract_response_and_thinking(turn: Any) -> Tuple[str, Optional[str]]:
         else:
             final_candidates.append(s)
 
-    # Build the response candidate pool.
-    response_pool: List[str] = []
-    response_pool.extend([t for t in rc_texts if isinstance(t, str) and t.strip()])
-    response_pool.extend(final_candidates)
+    rc_pool = [t for t in rc_texts if isinstance(t, str) and t.strip()]
 
-    if response_pool:
-        # Prefer the best-scoring non-thinking content as the final answer.
-        response = max(response_pool, key=_final_score).strip()
+    # Deep Research reports can live outside the rc_* payload. Always prefer a report-like
+    # markdown candidate when present.
+    report_candidates = [t for t in (rc_pool + final_candidates) if _looks_like_report(t)]
+    if report_candidates:
+        response = max(report_candidates, key=_final_score).strip()
+    elif rc_pool:
+        # Some exports embed many auxiliary strings in the response slot (e.g. link preview
+        # descriptions). Prefer the structurally-extracted rc_* payload when present.
+        response = max(rc_pool, key=_final_score).strip()
+    elif final_candidates:
+        response = max(final_candidates, key=_final_score).strip()
 
     thinking = None
     if thinking_candidates:
