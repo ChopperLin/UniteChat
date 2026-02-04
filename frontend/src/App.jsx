@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import SearchModal from './components/SearchModal';
+import RenameModal from './components/RenameModal';
 import axios from 'axios';
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [shuttingDown, setShuttingDown] = useState(false);
+  const [renameState, setRenameState] = useState({ open: false, chatId: null, category: null, title: '' });
 
   // 加载文件夹列表
   useEffect(() => {
@@ -87,6 +89,55 @@ function App() {
       });
   };
 
+  const deleteChat = async (chatId, category) => {
+    if (!chatId || !category) return;
+
+    const ok = window.confirm('确定要删除这条对话记录吗？（不可恢复）');
+    if (!ok) return;
+
+    try {
+      const folderParam = currentFolder;
+      await axios.delete(`/api/chat/${chatId}?category=${encodeURIComponent(category)}&folder=${encodeURIComponent(folderParam)}`);
+      if (selectedChat === chatId) {
+        setSelectedChat(null);
+        setChatData(null);
+      }
+      loadConversations(folderParam);
+    } catch (e) {
+      console.error('删除对话失败:', e);
+      window.alert(`删除失败：${e?.response?.data?.error || e?.message || 'unknown error'}`);
+    }
+  };
+
+  const openRename = (chatId, category, currentTitle) => {
+    if (!chatId || !category) return;
+    setRenameState({ open: true, chatId, category, title: String(currentTitle || '') });
+  };
+
+  const submitRename = async (newTitle) => {
+    const chatId = renameState?.chatId;
+    const category = renameState?.category;
+    if (!chatId || !category) return;
+
+    const folderParam = currentFolder;
+    let res;
+    try {
+      res = await axios.patch(
+        `/api/chat/${chatId}?category=${encodeURIComponent(category)}&folder=${encodeURIComponent(folderParam)}`,
+        { title: newTitle }
+      );
+    } catch (e) {
+      const msg = e?.response?.data?.error || e?.message || 'unknown error';
+      throw new Error(msg);
+    }
+
+    if (selectedChat === chatId) {
+      setChatData((prev) => (prev ? { ...prev, title: res?.data?.title || newTitle } : prev));
+    }
+
+    loadConversations(folderParam);
+  };
+
   // 快捷键：Ctrl+K 打开搜索
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -137,6 +188,8 @@ function App() {
         onCategoryChange={setSelectedCategory}
         selectedChat={selectedChat}
         onChatSelect={(chatId) => loadChat(chatId, selectedCategory)}
+        onChatDelete={(chatId, category) => deleteChat(chatId, category)}
+        onChatRename={(chatId, category, currentTitle) => openRename(chatId, category, currentTitle)}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
@@ -166,6 +219,13 @@ function App() {
           setSelectedCategory(r.category);
           loadChat(r.id, r.category, targetFolder);
         }}
+      />
+
+      <RenameModal
+        open={Boolean(renameState?.open)}
+        initialTitle={renameState?.title || ''}
+        onClose={() => setRenameState({ open: false, chatId: null, category: null, title: '' })}
+        onSubmit={submitRename}
       />
     </div>
   );

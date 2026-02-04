@@ -26,7 +26,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 # Bump this when changing parsing behavior; exposed by /api/health?verbose=1.
-PARSER_VERSION = "2026-02-03-10"
+PARSER_VERSION = "2026-02-04-01"
 
 
 _BATCHEXECUTE_PREFIX = ")]}'"
@@ -1003,6 +1003,52 @@ def parse_gemini_batchexecute_conversation(data: Dict[str, Any]) -> Dict[str, An
         "messages": messages,
         "meta": meta,
     }
+
+
+def extract_gemini_batchexecute_update_time(data: Dict[str, Any]) -> Tuple[Optional[float], Optional[float]]:
+    """Extract (update_time, create_time) for listing/sorting.
+
+    Prefer actual turn timestamps when available; fall back to fetched_at.
+    This is intentionally lightweight compared to full conversation parsing.
+    """
+    fetched_at = _iso_to_epoch_seconds(_safe_str(data.get("fetched_at")))
+
+    raw = _safe_str(data.get("batchexecute_raw"))
+    if not raw:
+        # Broken/empty export -> push to bottom in listings.
+        return 0.0, None
+
+    outer = _extract_first_outer_json(raw)
+    if not outer or not isinstance(outer, list):
+        return 0.0, None
+
+    inner_str = None
+    try:
+        if isinstance(outer[0], list) and len(outer[0]) >= 3 and isinstance(outer[0][2], str):
+            inner_str = outer[0][2]
+    except Exception:
+        inner_str = None
+
+    if not inner_str:
+        return 0.0, None
+
+    try:
+        inner = json.loads(inner_str)
+    except Exception:
+        return 0.0, None
+
+    try:
+        turns = _parse_turns(inner)
+    except Exception:
+        return 0.0, None
+
+    ts_vals = [t.ts for t in turns if t.ts is not None]
+    if not ts_vals:
+        # No usable turn timestamps -> fall back to fetched_at if present, else bottom.
+        return (fetched_at or 0.0), None
+
+    # Latest turn = update_time; earliest turn = create_time.
+    return max(ts_vals), min(ts_vals)
 
 
 def extract_gemini_batchexecute_text(data: Dict[str, Any]) -> str:

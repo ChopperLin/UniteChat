@@ -144,15 +144,13 @@ def get_chat(chat_id):
                 json_data = json.load(f)
             conversation = parser.parse_conversation(json_data)
 
-            # Some export formats (e.g. Gemini batchexecute) don't carry a title in JSON.
             # Keep UI consistent with the listing (derived from filename).
+            # This also enables persistent "rename" by renaming the file, without rewriting exports.
             if isinstance(conversation, dict):
-                title = (conversation.get('title') if isinstance(conversation.get('title'), str) else '')
-                if not title.strip():
-                    stem = src.file_path.stem
-                    parts = stem.rsplit('_', 1)
-                    if len(parts) == 2 and parts[0].strip():
-                        conversation['title'] = parts[0].strip()
+                stem = src.file_path.stem
+                parts = stem.rsplit('_', 1)
+                if len(parts) == 2 and parts[0].strip():
+                    conversation['title'] = parts[0].strip()
             return jsonify(conversation)
 
         if src.kind == 'claude':
@@ -197,6 +195,106 @@ def get_chat(chat_id):
         return jsonify({'error': str(e)}), 404
     except json.JSONDecodeError as e:
         return jsonify({'error': f'Invalid JSON: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/chat/<chat_id>', methods=['PATCH'])
+def rename_chat(chat_id):
+    """Rename a single conversation (persistent, by renaming its JSON file).
+
+    Supported:
+    - ChatGPT-style per-file JSON exports
+    - Gemini web batchexecute per-file JSON exports (data/gemini_export_*)
+
+    Query params:
+        category: category name
+        folder: folder name
+    Body (JSON):
+        {"title": "New title"}
+    """
+    category = request.args.get('category', 'AI')
+    folder = request.args.get('folder')
+
+    try:
+        payload = request.get_json(silent=True) or {}
+        new_title = payload.get('title')
+        if not isinstance(new_title, str):
+            return jsonify({'error': 'title must be a string'}), 400
+        new_title = new_title.strip()
+        if not new_title:
+            return jsonify({'error': 'title cannot be empty'}), 400
+        if len(new_title) > 160:
+            return jsonify({'error': 'title too long (max 160 chars)'}), 400
+        # Prevent path traversal / illegal filename chars.
+        if any(ch in new_title for ch in ['\\', '/', ':', '*', '?', '"', '<', '>', '|']):
+            return jsonify({'error': 'title contains illegal filename characters'}), 400
+
+        src = scanner.resolve_chat_source(chat_id, category, folder)
+        if src.kind != 'chatgpt_file':
+            return jsonify({'error': f'Unsupported rename source: {src.kind}'}), 400
+
+        old_path = Path(src.file_path).resolve()
+        root = Path(Config.DATA_ROOT_PATH).resolve()
+        if root not in old_path.parents:
+            return jsonify({'error': 'invalid path'}), 400
+
+        new_path = old_path.with_name(f"{new_title}_{chat_id}{old_path.suffix}")
+        if new_path.exists() and new_path != old_path:
+            return jsonify({'error': 'a conversation with the same title already exists'}), 409
+
+        if new_path != old_path:
+            old_path.rename(new_path)
+
+        scanner.clear_cache()
+        folder_to_index = folder or scanner.current_folder
+        if folder_to_index:
+            searcher.schedule_build(folder_to_index, Config.DATA_ROOT_PATH / folder_to_index)
+
+        return jsonify({'success': True, 'title': new_title})
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/chat/<chat_id>', methods=['DELETE'])
+def delete_chat(chat_id):
+    """Delete a single conversation record (persistent).
+
+    Currently supported:
+    - ChatGPT-style per-file JSON exports
+    - Gemini web batchexecute per-file JSON exports (data/gemini_export_*)
+
+    Query params:
+        category: category name
+        folder: folder name
+    """
+    category = request.args.get('category', 'AI')
+    folder = request.args.get('folder')
+
+    try:
+        src = scanner.resolve_chat_source(chat_id, category, folder)
+        if src.kind != 'chatgpt_file':
+            return jsonify({'error': f'Unsupported delete source: {src.kind}'}), 400
+
+        p = Path(src.file_path).resolve()
+        root = Path(Config.DATA_ROOT_PATH).resolve()
+        if root not in p.parents:
+            return jsonify({'error': 'invalid path'}), 400
+
+        if p.exists():
+            p.unlink()
+
+        scanner.clear_cache()
+
+        folder_to_index = folder or scanner.current_folder
+        if folder_to_index:
+            searcher.schedule_build(folder_to_index, Config.DATA_ROOT_PATH / folder_to_index)
+
+        return jsonify({'success': True})
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

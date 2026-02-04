@@ -330,7 +330,11 @@ def normalize_claude_conversation(
     meta = {
         "source": "claude",
         # Claude export doesn't reliably include model per conversation.
-        "model_slug": (conv_raw.get("model") or conv_raw.get("model_slug") or "").strip() if isinstance(conv_raw.get("model") or conv_raw.get("model_slug"), str) else "",
+        "model_slug": (
+            (conv_raw.get("model") or conv_raw.get("model_slug") or "").strip()
+            if isinstance(conv_raw.get("model") or conv_raw.get("model_slug"), str)
+            else ""
+        ) or "Claude",
         "create_time": _safe_epoch(created_at),
         "update_time": _safe_epoch(updated_at),
     }
@@ -364,7 +368,7 @@ def normalize_claude_project(project_raw: Dict[str, Any], memory: str = "") -> D
 
     meta = {
         "source": "claude_project",
-        "model_slug": "",
+        "model_slug": "Claude",
         "create_time": _safe_epoch(created_at),
         "update_time": _safe_epoch(updated_at),
     }

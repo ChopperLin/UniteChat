@@ -18,12 +18,16 @@ function Sidebar({
   onCategoryChange, 
   selectedChat, 
   onChatSelect,
+  onChatDelete,
+  onChatRename,
   collapsed,
   onToggleCollapse
 }) {
   const [categoryExpanded, setCategoryExpanded] = useState({});
   const [folderDropdownOpen, setFolderDropdownOpen] = useState(false);
+  const [chatMenuOpen, setChatMenuOpen] = useState(null); // {category, id} | null
   const dropdownRef = useRef(null);
+  const chatMenuRef = useRef(null);
   const safeFolders = Array.isArray(folders) ? folders : [];
   const safeConversations = conversations && typeof conversations === 'object' ? conversations : {};
   const categories = Object.keys(safeConversations);
@@ -53,6 +57,24 @@ function Sidebar({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [folderDropdownOpen]);
+
+  // 点击外部关闭对话菜单
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!chatMenuOpen) return;
+      if (chatMenuRef.current && !chatMenuRef.current.contains(event.target)) {
+        setChatMenuOpen(null);
+      }
+    };
+
+    if (chatMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [chatMenuOpen]);
 
   return (
     <div style={{
@@ -306,38 +328,179 @@ function Sidebar({
                     marginLeft: '10px',
                     marginTop: '4px'
                   }}>
-                    {chatList.map(chat => (
-                      <div
-                        key={chat.id}
-                        onClick={() => onChatSelect(chat.id)}
-                        style={{
-                          padding: '10px 14px',
-                          marginBottom: '3px',
-                          borderRadius: '10px',
-                          cursor: 'pointer',
-                          background: selectedChat === chat.id ? '#D0C8BE' : 'transparent',
-                          transition: 'background-color 0.06s',
-                          fontSize: '13.5px',
-                          color: '#3A3330',
+                    {chatList.map(chat => {
+                      const canEdit = (chat?.can_edit !== false);
+                      return (
+                        <div
+                          key={chat.id}
+                          onClick={() => onChatSelect(chat.id)}
+                          style={{
+                            padding: '10px 14px',
+                            marginBottom: '3px',
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            background: selectedChat === chat.id ? '#D0C8BE' : 'transparent',
+                            transition: 'background-color 0.06s',
+                            fontSize: '13.5px',
+                            color: '#3A3330',
+                            fontWeight: selectedChat === chat.id ? '500' : '400',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            minWidth: 0,
+                            position: 'relative'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (selectedChat !== chat.id) {
+                              e.currentTarget.style.background = 'rgba(42, 37, 35, 0.04)';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (selectedChat !== chat.id) {
+                              e.currentTarget.style.background = 'transparent';
+                            }
+                          }}
+                        >
+                        <span style={{
+                          flex: '1 1 auto',
+                          minWidth: 0,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          fontWeight: selectedChat === chat.id ? '500' : '400'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (selectedChat !== chat.id) {
-                            e.currentTarget.style.background = 'rgba(42, 37, 35, 0.04)';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedChat !== chat.id) {
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {chat.title}
+                        </span>
+
+                        {canEdit && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const key = { category, id: chat.id };
+                            const same = chatMenuOpen && chatMenuOpen.category === key.category && chatMenuOpen.id === key.id;
+                            setChatMenuOpen(same ? null : key);
+                          }}
+                          style={{
+                            flex: '0 0 auto',
+                            border: 'none',
+                            background: 'transparent',
+                            cursor: 'pointer',
+                            padding: '2px 6px',
+                            borderRadius: '8px',
+                            color: '#6B615B',
+                            fontSize: '16px',
+                            lineHeight: 1,
+                            opacity: 0.75
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(42, 37, 35, 0.06)';
+                            e.currentTarget.style.opacity = 1;
+                          }}
+                          onMouseLeave={(e) => {
                             e.currentTarget.style.background = 'transparent';
-                          }
-                        }}
-                      >
-                        {chat.title}
-                      </div>
-                    ))}
+                            e.currentTarget.style.opacity = 0.75;
+                          }}
+                          title="更多操作"
+                        >
+                          ⋯
+                        </button>
+                        )}
+
+                        {canEdit && chatMenuOpen && chatMenuOpen.category === category && chatMenuOpen.id === chat.id && (
+                          <div
+                            ref={chatMenuRef}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            style={{
+                              position: 'absolute',
+                              right: '10px',
+                              top: '100%',
+                              marginTop: '6px',
+                              zIndex: 50,
+                              background: '#FFFFFF',
+                              border: '1px solid #E5E0DB',
+                              borderRadius: '12px',
+                              boxShadow: '0 10px 30px rgba(42, 37, 35, 0.12)',
+                              padding: '8px',
+                              minWidth: '150px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (typeof onChatRename === 'function') onChatRename(chat.id, category, chat.title);
+                                setChatMenuOpen(null);
+                              }}
+                              style={{
+                                width: '100%',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '10px 12px',
+                                borderRadius: '10px',
+                                background: '#F7F5F2',
+                                color: '#2A2523',
+                                fontWeight: '700',
+                                fontSize: '13.5px',
+                                textAlign: 'left',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#EFEAE3';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#F7F5F2';
+                              }}
+                              title="重命名"
+                            >
+                              <span style={{ width: '18px', textAlign: 'center', fontSize: '14px' }}>✏️</span>
+                              <span>重命名</span>
+                            </button>
+
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (typeof onChatDelete === 'function') onChatDelete(chat.id, category);
+                                setChatMenuOpen(null);
+                              }}
+                              style={{
+                                width: '100%',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '10px 12px',
+                                borderRadius: '10px',
+                                background: '#FEECE7',
+                                color: '#8B2E1F',
+                                fontWeight: '700',
+                                fontSize: '13.5px',
+                                textAlign: 'left',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#FBD9D1';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#FEECE7';
+                              }}
+                              title="删除"
+                            >
+                              <span style={{ width: '18px', textAlign: 'center', fontSize: '14px' }}>🗑</span>
+                              <span>删除</span>
+                            </button>
+                            </div>
+                          </div>
+                        )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

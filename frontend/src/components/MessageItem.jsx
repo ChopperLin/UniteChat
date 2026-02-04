@@ -1,12 +1,83 @@
 import React, { useMemo, useState } from 'react';
 import ThinkingBlock from './ThinkingBlock';
-import MarkdownContent from './MarkdownContent';
 import CollapsibleContent from './CollapsibleContent';
 
 function MessageItem({ message }) {
   const { role } = message;
 
   const [hovered, setHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const hasThinking = Boolean(message?.thinking || message?.thinking_summary || message?.thinking_duration);
+
+  const copyToClipboard = async (text) => {
+    const s = (text == null) ? '' : String(text);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(s);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = s;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 900);
+    } catch (e) {
+      console.error('copy failed', e);
+    }
+  };
+
+  const CopyButton = ({ onClick }) => (
+    <button
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof onClick === 'function') onClick();
+      }}
+      style={{
+        width: '30px',
+        height: '30px',
+        borderRadius: '10px',
+        border: '1px solid rgba(229, 224, 219, 0.95)',
+        background: 'rgba(255, 255, 255, 0.92)',
+        boxShadow: '0 1px 3px rgba(42, 37, 35, 0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        opacity: hovered ? 1 : 0,
+        transform: hovered ? 'translateY(0)' : 'translateY(-2px)',
+        transition: 'opacity 0.12s ease, transform 0.12s ease, background-color 0.08s',
+        pointerEvents: hovered ? 'auto' : 'none'
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = '#FFFFFF';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.92)';
+      }}
+      title={copied ? '已复制' : '复制'}
+      aria-label="复制"
+    >
+      {copied ? (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3.2 8.4L6.3 11.4L12.8 4.9" stroke="#2A2523" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="5" y="5" width="9" height="9" rx="2" stroke="#2A2523" strokeWidth="1.4"/>
+          <path d="M3 11V4.8C3 3.805 3.805 3 4.8 3H11" stroke="#2A2523" strokeWidth="1.4" strokeLinecap="round"/>
+        </svg>
+      )}
+    </button>
+  );
 
   const ts = message?.ts;
   const dateLabel = useMemo(() => {
@@ -59,7 +130,10 @@ function MessageItem({ message }) {
 
   if (role === 'user') {
     return (
-      <div style={{
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
         display: 'flex',
         gap: '18px',
         marginBottom: '32px',
@@ -67,64 +141,163 @@ function MessageItem({ message }) {
         alignItems: 'flex-start'
       }}>
         {/* User Avatar - Claude Style: Professional user icon */}
-        <div style={{
-          width: '36px',
-          height: '36px',
-          borderRadius: '50%',
-          background: 'linear-gradient(135deg, #5D5449 0%, #4A443A 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          boxShadow: '0 2px 4px rgba(42, 37, 35, 0.15)'
-        }}>
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="10" cy="7" r="3.5" fill="#FFFFFF" opacity="0.9"/>
-            <path d="M4 17C4 13.5 6.5 11 10 11C13.5 11 16 13.5 16 17" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" opacity="0.9"/>
-          </svg>
+        <div style={{ position: 'relative', width: '36px', flexShrink: 0 }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #5D5449 0%, #4A443A 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 2px 4px rgba(42, 37, 35, 0.15)'
+          }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="10" cy="7" r="3.5" fill="#FFFFFF" opacity="0.9"/>
+              <path d="M4 17C4 13.5 6.5 11 10 11C13.5 11 16 13.5 16 17" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" opacity="0.9"/>
+            </svg>
+          </div>
+
+          {/* Copy button (below avatar, never overlaps avatar) */}
+          <div style={{
+            position: 'absolute',
+            top: '46px',
+            left: '50%',
+            transform: 'translateX(-50%)'
+          }}>
+            <CopyButton onClick={() => copyToClipboard(message?.content)} />
+          </div>
         </div>
+
+        {/* Bubble + copy button (outside, left) */}
         <div
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-          style={{
-            position: 'relative',
-            flex: 1,
-            minWidth: 0,
-            background: '#E8E3DB',
-            padding: '16px 20px',
-            borderRadius: '14px',
-            fontSize: '15.5px',
-            lineHeight: '1.7',
-            color: '#2A2523',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            overflowWrap: 'break-word',
-            border: '1px solid #DCD7CF',
-            boxShadow: '0 1px 2px rgba(42, 37, 35, 0.04)'
-          }}
+          style={{ position: 'relative', flex: 1, minWidth: 0, overflow: 'visible' }}
         >
-          <CollapsibleContent 
-            content={message.content} 
-            isMarkdown={false} 
-            gradientColor="#E8E3DB"
-          />
-          <TimestampPill align="right" />
+          <div
+            style={{
+              position: 'relative',
+              background: '#E8E3DB',
+              padding: '16px 20px',
+              borderRadius: '14px',
+              fontSize: '15.5px',
+              lineHeight: '1.7',
+              color: '#2A2523',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              overflowWrap: 'break-word',
+              border: '1px solid #DCD7CF',
+              boxShadow: '0 1px 2px rgba(42, 37, 35, 0.04)'
+            }}
+          >
+            <CollapsibleContent 
+              content={message.content} 
+              isMarkdown={false} 
+              gradientColor="#E8E3DB"
+            />
+            <TimestampPill align="right" />
+          </div>
         </div>
       </div>
     );
   }
 
   // Assistant 消息 - Claude风格
+  if (!hasThinking) {
+    return (
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'flex',
+          gap: '18px',
+          marginBottom: '32px',
+          maxWidth: '100%',
+          alignItems: 'flex-start'
+        }}
+      >
+        {/* AI Avatar */}
+        <div style={{ position: 'relative', width: '36px', flexShrink: 0 }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #CC9966 0%, #B8835A 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 2px 4px rgba(42, 37, 35, 0.15)',
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.15) 0%, transparent 60%)',
+              pointerEvents: 'none'
+            }}></div>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 2L10.9 6.8L13 4.5L11.5 9L16 8L12 10L16 12L11.5 11L13 15.5L10.9 13.2L10 18L9.1 13.2L7 15.5L8.5 11L4 12L8 10L4 8L8.5 9L7 4.5L9.1 6.8L10 2Z" fill="#FFFFFF" opacity="0.95"/>
+            </svg>
+          </div>
+
+          {/* Copy button (below avatar, never overlaps avatar) */}
+          {message?.content && (
+            <div style={{
+              position: 'absolute',
+              top: '46px',
+              left: '50%',
+              transform: 'translateX(-50%)'
+            }}>
+              <CopyButton onClick={() => copyToClipboard(message?.content)} />
+            </div>
+          )}
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0, maxWidth: '100%' }}>
+          {/* 回复内容 - Claude风格卡片 */}
+          {message.content && (
+            <div
+              style={{
+                position: 'relative',
+                background: '#FDFBF9',
+                padding: '22px 24px',
+                borderRadius: '14px',
+                border: '1px solid #E5E0DB',
+                overflowX: 'auto',
+                overflowY: 'visible',
+                boxShadow: '0 1px 3px rgba(42, 37, 35, 0.04)'
+              }}
+            >
+              <CollapsibleContent 
+                content={message.content} 
+                isMarkdown={true} 
+                gradientColor="#FDFBF9"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{
-      display: 'flex',
-      gap: '18px',
-      marginBottom: '32px',
-      maxWidth: '100%',
-      alignItems: 'flex-start'
-    }}>
-      {/* AI Avatar - Claude Style: Professional AI sparkle icon */}
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '36px 1fr',
+        columnGap: '18px',
+        rowGap: '12px',
+        marginBottom: '32px',
+        maxWidth: '100%',
+        alignItems: 'start'
+      }}
+    >
+      {/* AI Avatar */}
       <div style={{
+        gridColumn: '1',
+        gridRow: '1',
         width: '36px',
         height: '36px',
         borderRadius: '50%',
@@ -132,12 +305,10 @@ function MessageItem({ message }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        flexShrink: 0,
         boxShadow: '0 2px 4px rgba(42, 37, 35, 0.15)',
         position: 'relative',
         overflow: 'hidden'
       }}>
-        {/* Subtle gradient overlay */}
         <div style={{
           position: 'absolute',
           inset: 0,
@@ -145,33 +316,45 @@ function MessageItem({ message }) {
           pointerEvents: 'none'
         }}></div>
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-          {/* Sparkle/star icon representing AI intelligence */}
           <path d="M10 2L10.9 6.8L13 4.5L11.5 9L16 8L12 10L16 12L11.5 11L13 15.5L10.9 13.2L10 18L9.1 13.2L7 15.5L8.5 11L4 12L8 10L4 8L8.5 9L7 4.5L9.1 6.8L10 2Z" fill="#FFFFFF" opacity="0.95"/>
         </svg>
       </div>
-      <div style={{ 
-        flex: 1,
-        minWidth: 0,
-        maxWidth: '100%'
-      }}>
-        {/* 思考过程 */}
-        {(message.thinking || message.thinking_summary || message.thinking_duration) && (
+
+      {/* Thinking row */}
+      {hasThinking && (
+        <div style={{ gridColumn: '2', gridRow: '1', minWidth: 0 }}>
           <ThinkingBlock
             thinking={message.thinking}
             thinkingSummary={message.thinking_summary}
             thinkingDuration={message.thinking_duration}
           />
-        )}
+        </div>
+      )}
 
-        {/* 回复内容 - Claude风格卡片 */}
-        {message.content && (
+      {/* Copy button aligned to response row (never above response) */}
+      {message?.content && (
+        <div style={{
+          gridColumn: '1',
+          gridRow: hasThinking ? '2' : '1',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          paddingTop: '10px'
+        }}>
+          <CopyButton onClick={() => copyToClipboard(message?.content)} />
+        </div>
+      )}
+
+      {/* Response bubble */}
+      {message.content && (
+        <div style={{ gridColumn: '2', gridRow: hasThinking ? '2' : '1', minWidth: 0 }}>
           <div
             style={{
+              position: 'relative',
               background: '#FDFBF9',
               padding: '22px 24px',
               borderRadius: '14px',
               border: '1px solid #E5E0DB',
-              marginTop: (message.thinking || message.thinking_summary || message.thinking_duration) ? '12px' : '0',
               overflowX: 'auto',
               overflowY: 'visible',
               boxShadow: '0 1px 3px rgba(42, 37, 35, 0.04)'
@@ -183,8 +366,8 @@ function MessageItem({ message }) {
               gradientColor="#FDFBF9"
             />
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

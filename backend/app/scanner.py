@@ -27,12 +27,33 @@ class DataFileHandler(FileSystemEventHandler):
         self.scanner = scanner
         self.last_scan_time = 0
         self.scan_cooldown = 2  # 2秒冷却时间，避免频繁扫描
+        self._last_mtime_by_path: Dict[str, float] = {}
     
     def on_any_event(self, event):
         """处理所有文件系统事件"""
         # 只关心JSON文件的变化
         if event.is_directory or not event.src_path.endswith('.json'):
             return
+
+        # Ignore read/open/close events: those can fire frequently on Windows and would
+        # cause the cache to thrash while the app is merely reading JSON files.
+        if getattr(event, "event_type", None) not in {"modified", "created", "deleted", "moved"}:
+            return
+
+        # On some Windows configurations, file reads can still trigger "modified" events
+        # without changing mtime (e.g. metadata/atime). Guard against that to keep the
+        # conversation list cache stable.
+        try:
+            if getattr(event, "event_type", None) == "modified":
+                p = Path(event.src_path)
+                if p.exists():
+                    mtime = float(p.stat().st_mtime)
+                    prev = self._last_mtime_by_path.get(event.src_path)
+                    self._last_mtime_by_path[event.src_path] = mtime
+                    if prev is not None and abs(prev - mtime) < 1e-6:
+                        return
+        except Exception:
+            pass
         
         current_time = time.time()
         if current_time - self.last_scan_time < self.scan_cooldown:
@@ -55,10 +76,104 @@ class ConversationScanner:
         self._special_cache: Dict[str, Dict[str, Any]] = {}
         self._observer = None
         self._start_file_watcher()
+        self._file_time_cache: Dict[str, Tuple[float, Optional[float], Optional[float], float]] = {}
 
         # Fast header parse: exported ChatGPT JSON usually contains create_time/update_time near the top.
         self._re_update_time = re.compile(r'"update_time"\s*:\s*([0-9]+(?:\.[0-9]+)?)')
         self._re_create_time = re.compile(r'"create_time"\s*:\s*([0-9]+(?:\.[0-9]+)?)')
+        # Gemini web export (batchexecute) stores fetch time as ISO string.
+        self._re_fetched_at = re.compile(r'"fetched_at"\s*:\s*"([^"]+)"')
+        # Fast scan for epoch timestamp pairs inside batchexecute_raw string.
+        # Example: [1755227954,114133000]
+        self._re_epoch_pair_bytes = re.compile(rb"\[(\d{9,12}),\s*(\d{1,9})\]")
+
+    def _iso_to_epoch_seconds(self, value: Optional[str]) -> Optional[float]:
+        """Parse an ISO timestamp string to epoch seconds (UTC)."""
+        if not value or not isinstance(value, str):
+            return None
+        s = value.strip()
+        if not s:
+            return None
+
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+
+        try:
+            dt = datetime.fromisoformat(s)
+        except Exception:
+            return None
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        return dt.timestamp()
+
+    def _fast_extract_batchexecute_times(self, json_file: Path, head_bytes: bytes) -> Tuple[Optional[float], Optional[float]]:
+        """Fast best-effort timestamp extraction for Gemini batchexecute exports.
+
+        We avoid full JSON parsing for performance. The batchexecute payload contains many
+        turn timestamps as `[sec, nanos]` pairs inside the serialized string.
+        """
+        try:
+            size = int(json_file.stat().st_size)
+        except Exception:
+            size = 0
+
+        # If the export doesn't contain the expected inner payload marker, it's often an
+        # "access denied / fetch failure" stub. Push these to the bottom.
+        # NOTE: This marker is inside a JSON string, so quotes are escaped.
+        has_inner_marker = b'\\"hNvQHb\\"' in (head_bytes or b"")
+
+        def _scan_bytes(buf: bytes) -> List[float]:
+            out: List[float] = []
+            for m in self._re_epoch_pair_bytes.finditer(buf or b""):
+                try:
+                    sec = int(m.group(1))
+                    nanos = int(m.group(2))
+                except Exception:
+                    continue
+                if not (1_000_000_000 <= sec <= 20_000_000_000):
+                    continue
+                if not (0 <= nanos < 1_000_000_000):
+                    continue
+                out.append(float(sec) + (float(nanos) / 1e9))
+            return out
+
+        # Prefer tail for update_time (latest turn often near the end)
+        ts_vals: List[float] = []
+        try:
+            with open(json_file, "rb") as f:
+                if size > 0:
+                    tail = 512 * 1024
+                    if size > tail:
+                        f.seek(max(0, size - tail))
+                    buf = f.read(tail)
+                else:
+                    buf = head_bytes or b""
+            ts_vals = _scan_bytes(buf)
+        except Exception:
+            ts_vals = []
+
+        if ts_vals:
+            update_time = max(ts_vals)
+            create_time = min(ts_vals) if size <= (512 * 1024) else None
+            if create_time is None:
+                # Try head for create_time (earliest turn)
+                try:
+                    with open(json_file, "rb") as f2:
+                        buf2 = f2.read(256 * 1024)
+                    head_vals = _scan_bytes(buf2)
+                    if head_vals:
+                        create_time = min(head_vals)
+                except Exception:
+                    create_time = None
+            return update_time, create_time
+
+        # No timestamp pairs found: likely invalid export, or a variant without timestamps.
+        if not has_inner_marker:
+            return 0.0, None
+
+        return None, None
 
     def _detect_folder_kind(self, folder_path: Path) -> str:
         """Detect the export format for a folder.
@@ -151,6 +266,7 @@ class ConversationScanner:
                     'project_name': proj_name,
                     'update_time': p.get('updated_at'),
                     'create_time': p.get('created_at'),
+                    'can_edit': False,
                     '_sort_time': sort_time,
                     '_pinned': 1,
                 })
@@ -263,6 +379,7 @@ class ConversationScanner:
                     'project_name': proj_name,
                     'update_time': rec.updated_at,
                     'create_time': rec.created_at,
+                    'can_edit': False,
                     '_sort_time': sort_time,
                 })
                 lookup[(cat, rec.uuid)] = ChatSource(
@@ -312,6 +429,7 @@ class ConversationScanner:
                     'category': '全部',
                     'update_time': rec.updated_at,
                     'create_time': rec.created_at,
+                    'can_edit': False,
                     '_sort_time': sort_time,
                 })
                 lookup[('全部', rec.chat_id)] = ChatSource(
@@ -539,6 +657,7 @@ class ConversationScanner:
                         'category': category_name,  # 保存完整路径，用于查找文件
                         'update_time': update_time,
                         'create_time': create_time,
+                        'can_edit': True,
                         '_sort_time': sort_time,
                     })
 
@@ -575,6 +694,7 @@ class ConversationScanner:
                 'category': '全部',
                 'update_time': update_time,
                 'create_time': create_time,
+                'can_edit': True,
                 '_sort_time': sort_time,
             })
         
@@ -595,6 +715,15 @@ class ConversationScanner:
         create_time = None
 
         try:
+            st = json_file.stat()
+            mtime = float(st.st_mtime)
+            cached = self._file_time_cache.get(str(json_file))
+            if cached and abs(cached[0] - mtime) < 1e-6:
+                return cached[1], cached[2], cached[3]
+        except Exception:
+            mtime = None
+
+        try:
             # Read a limited prefix; exported files place title/create_time/update_time near the top.
             with open(json_file, 'rb') as f:
                 head = f.read(64 * 1024)
@@ -613,17 +742,44 @@ class ConversationScanner:
                     create_time = float(m_cre.group(1))
                 except Exception:
                     create_time = None
+
+            # Gemini batchexecute exports typically don't include numeric create/update_time.
+            # Prefer extracting actual turn timestamps; fall back to fetched_at (ISO string).
+            if update_time is None and create_time is None and '"batchexecute_raw"' in text:
+                upd, cre = self._fast_extract_batchexecute_times(json_file, head)
+                update_time = upd if isinstance(upd, (int, float)) else None
+                create_time = cre if isinstance(cre, (int, float)) else None
+
+                if update_time is None and create_time is None:
+                    m_fetched = self._re_fetched_at.search(text)
+                    if m_fetched:
+                        ts = self._iso_to_epoch_seconds(m_fetched.group(1))
+                        if ts:
+                            update_time = ts
         except Exception:
             update_time = None
             create_time = None
 
-        # Prefer JSON times; fallback to filesystem mtime (seconds)
-        sort_time = update_time or create_time or 0.0
-        if not sort_time:
+        # Prefer JSON times; fallback to filesystem mtime (seconds).
+        # NOTE: update_time can be 0.0 as a sentinel to push invalid exports to the bottom,
+        # so we must not use truthiness checks here.
+        if update_time is not None:
+            sort_time = float(update_time)
+        elif create_time is not None:
+            sort_time = float(create_time)
+        else:
+            sort_time = 0.0
             try:
                 sort_time = float(json_file.stat().st_mtime)
             except Exception:
                 sort_time = 0.0
+
+        try:
+            if mtime is None:
+                mtime = float(json_file.stat().st_mtime)
+            self._file_time_cache[str(json_file)] = (float(mtime), update_time, create_time, float(sort_time))
+        except Exception:
+            pass
 
         return update_time, create_time, sort_time
     
