@@ -22,7 +22,7 @@ def _get_host_port() -> tuple[str, int]:
 if __name__ == '__main__':
     host, port = _get_host_port()
 
-    print("🚀 启动 GPT Chat Browser 后端...")
+    print("🚀 启动 UniteChat 后端...")
     print("🐍 Python:", sys.executable)
     print("🐍 Version:", sys.version.split()[0])
     print("📂 数据根目录:", Config.DATA_ROOT_PATH)

@@ -1,4 +1,4 @@
-# Root .gitignore for GPT Chat Browser project
+# Root .gitignore for UniteChat project
 
 # Data directory (user's chat exports)
 data/

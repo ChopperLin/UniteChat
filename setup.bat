@@ -4,12 +4,12 @@ setlocal enabledelayedexpansion
 
 set "LOG_FILE=%~dp0setup.log"
 echo ======================================== > "%LOG_FILE%"
-echo   GPT Chat Browser 环境配置脚本日志 >> "%LOG_FILE%"
+echo   UniteChat 环境配置脚本日志 >> "%LOG_FILE%"
 echo   %DATE% %TIME% >> "%LOG_FILE%"
 echo ======================================== >> "%LOG_FILE%"
 
 echo ========================================
-echo   GPT Chat Browser 环境配置脚本
+echo   UniteChat 环境配置脚本
 echo ========================================
 echo.
 

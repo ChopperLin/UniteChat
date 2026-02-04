@@ -19,7 +19,7 @@ if /I "%~1"=="/silent" set "SILENT=1"
 
 if "%SILENT%"=="0" (
     echo ========================================
-    echo   GPT Chat Browser 停止服务脚本
+    echo   UniteChat 停止服务脚本
     echo ========================================
     echo.
 )

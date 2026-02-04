@@ -1,4 +1,4 @@
-#  GPT Chat Browser
+#  UniteChat
 
 一个优雅的本地 Web 应用，用于浏览和管理 ChatGPT 导出的对话记录。支持按文件夹/分类浏览、Markdown/LaTeX 公式/代码高亮渲染，以及 ChatGPT 风格的引用系统。
 

@@ -43,7 +43,7 @@ if errorlevel 1 (
 )
 
 echo ========================================
-echo   GPT Chat Browser
+echo   UniteChat
 echo ========================================
 echo.
 echo [1/3] Stopping old processes...

@@ -43,7 +43,7 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
           alignItems: 'center'
         }}>
           <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {chatData?.title || 'GPT Chat Browser'}
+            {chatData?.title || 'UniteChat'}
           </span>
         </h2>
 
