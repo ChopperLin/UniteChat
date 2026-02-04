@@ -67,6 +67,14 @@ function Get-PidsFromFiles([string[]]$paths) {
 function Kill-Tree([int]$processId) {
     if ($processId -le 0) { return }
 
+    # Prefer taskkill on Windows for reliable tree termination.
+    try {
+        & taskkill /PID $processId /T /F | Out-Null
+        return
+    } catch {
+        # fall back
+    }
+
     try {
         $kids = Get-CimInstance Win32_Process -Filter ("ParentProcessId=" + $processId)
         foreach ($k in $kids) {
@@ -119,6 +127,25 @@ function Get-ListeningPidsByPorts([int[]]$ports) {
     return $pidSet
 }
 
+function Should-KillByRoot([int]$processId) {
+    if (-not $Root) { return $true }
+    if ($processId -le 0) { return $false }
+
+    try {
+        $p = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $processId)
+        if (-not $p) { return $false }
+        $cmd = ($p.CommandLine | Out-String)
+        $exe = ($p.ExecutablePath | Out-String)
+        $needle = $Root.ToLowerInvariant()
+        if ($cmd -and $cmd.ToLowerInvariant().Contains($needle)) { return $true }
+        if ($exe -and $exe.ToLowerInvariant().Contains($needle)) { return $true }
+    } catch {
+        return $false
+    }
+
+    return $false
+}
+
 
 # 1) Kill explicit PID / PID file
 if ($TargetPid -le 0 -and $TargetPidFile) {
@@ -147,6 +174,8 @@ if ($TargetPidFiles -and $TargetPidFiles.Count -gt 0) {
 if ($Ports -and $Ports.Count -gt 0) {
     $pids = Get-ListeningPidsByPorts -ports $Ports
     foreach ($processId in $pids) {
-        Kill-Tree -processId $processId
+        if (Should-KillByRoot -processId $processId) {
+            Kill-Tree -processId $processId
+        }
     }
 }

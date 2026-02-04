@@ -5,6 +5,8 @@ param(
     [switch]$ShowDetails
 )
 
+$ErrorActionPreference = 'SilentlyContinue'
+
 $ports = $PortsCsv.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | ForEach-Object {
     $p = 0
     if (-not [int]::TryParse($_, [ref]$p)) {
@@ -14,6 +16,17 @@ $ports = $PortsCsv.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_
 }
 
 $listeners = @()
+
+function Test-CanBind([int]$port) {
+    try {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $port)
+        $listener.Start()
+        $listener.Stop()
+        return [pscustomobject]@{ Ok = $true; Reason = '' }
+    } catch {
+        return [pscustomobject]@{ Ok = $false; Reason = $_.Exception.Message }
+    }
+}
 
 if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
     foreach ($p in $ports) {
@@ -48,6 +61,25 @@ if ($listeners.Count -gt 0) {
                     Write-Output ("Port {0} LISTENING by PID {1}" -f $_.LocalPort, $pid)
                 }
             }
+    }
+    exit 1
+}
+
+# Even if nothing is LISTENING, Windows can still forbid binding (e.g., excluded port ranges)
+$notBindable = @()
+foreach ($p in $ports) {
+    $r = Test-CanBind -port $p
+    if (-not $r.Ok) {
+        $notBindable += [pscustomobject]@{ LocalPort = $p; Reason = $r.Reason }
+    }
+}
+
+if ($notBindable.Count -gt 0) {
+    if ($ShowDetails) {
+        foreach ($x in ($notBindable | Sort-Object LocalPort -Unique)) {
+            Write-Output ("Port {0} NOT bindable: {1}" -f $x.LocalPort, $x.Reason)
+        }
+        Write-Output "Tip: This often means the port is in an excluded range (Hyper-V/WSL), or blocked by policy/security software."
     }
     exit 1
 }
