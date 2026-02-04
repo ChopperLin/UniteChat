@@ -10,6 +10,7 @@ from app.scanner import scanner
 from app.parser import parser
 from app.normalize import normalize_claude_conversation, normalize_claude_project, normalize_gemini_activity
 from app.search import searcher
+from app.overrides import set_override, get_override
 from config import Config
 
 api = Blueprint('api', __name__)
@@ -76,6 +77,7 @@ def refresh_cache():
     """
     try:
         scanner.clear_cache()
+        searcher.invalidate_all()
         return jsonify({'success': True, 'message': '缓存已刷新'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -163,6 +165,17 @@ def get_chat(chat_id):
                 raise FileNotFoundError(f'Chat not found: {chat_id}')
 
             conversation = normalize_claude_conversation(rec.raw)
+            try:
+                ov = get_override(Config.DATA_ROOT_PATH / src.folder, f"claude:{chat_id}") or {}
+                if ov.get("deleted") is True:
+                    raise FileNotFoundError(f'Chat not found: {chat_id}')
+                t2 = ov.get("title")
+                if isinstance(t2, str) and t2.strip() and isinstance(conversation, dict):
+                    conversation["title"] = t2.strip()
+            except FileNotFoundError:
+                raise
+            except Exception:
+                pass
             return jsonify(conversation)
 
         if src.kind == 'claude_project':
@@ -226,28 +239,35 @@ def rename_chat(chat_id):
             return jsonify({'error': 'title cannot be empty'}), 400
         if len(new_title) > 160:
             return jsonify({'error': 'title too long (max 160 chars)'}), 400
-        # Prevent path traversal / illegal filename chars.
-        if any(ch in new_title for ch in ['\\', '/', ':', '*', '?', '"', '<', '>', '|']):
-            return jsonify({'error': 'title contains illegal filename characters'}), 400
 
         src = scanner.resolve_chat_source(chat_id, category, folder)
-        if src.kind != 'chatgpt_file':
+
+        if src.kind == 'chatgpt_file':
+            # Prevent path traversal / illegal filename chars (Windows).
+            if any(ch in new_title for ch in ['\\', '/', ':', '*', '?', '"', '<', '>', '|']):
+                return jsonify({'error': 'title contains illegal filename characters'}), 400
+
+            old_path = Path(src.file_path).resolve()
+            root = Path(Config.DATA_ROOT_PATH).resolve()
+            if root not in old_path.parents:
+                return jsonify({'error': 'invalid path'}), 400
+
+            new_path = old_path.with_name(f"{new_title}_{chat_id}{old_path.suffix}")
+            if new_path.exists() and new_path != old_path:
+                return jsonify({'error': 'a conversation with the same title already exists'}), 409
+
+            if new_path != old_path:
+                old_path.rename(new_path)
+        elif src.kind == 'claude':
+            # Persist rename into overrides file; do not mutate the original export JSON.
+            set_override(Config.DATA_ROOT_PATH / src.folder, f"claude:{chat_id}", {"title": new_title, "deleted": False})
+        else:
             return jsonify({'error': f'Unsupported rename source: {src.kind}'}), 400
-
-        old_path = Path(src.file_path).resolve()
-        root = Path(Config.DATA_ROOT_PATH).resolve()
-        if root not in old_path.parents:
-            return jsonify({'error': 'invalid path'}), 400
-
-        new_path = old_path.with_name(f"{new_title}_{chat_id}{old_path.suffix}")
-        if new_path.exists() and new_path != old_path:
-            return jsonify({'error': 'a conversation with the same title already exists'}), 409
-
-        if new_path != old_path:
-            old_path.rename(new_path)
 
         scanner.clear_cache()
         folder_to_index = folder or scanner.current_folder
+        if folder_to_index:
+            searcher.invalidate(folder_to_index)
         if folder_to_index:
             searcher.schedule_build(folder_to_index, Config.DATA_ROOT_PATH / folder_to_index)
 
@@ -275,20 +295,25 @@ def delete_chat(chat_id):
 
     try:
         src = scanner.resolve_chat_source(chat_id, category, folder)
-        if src.kind != 'chatgpt_file':
+        if src.kind == 'chatgpt_file':
+            p = Path(src.file_path).resolve()
+            root = Path(Config.DATA_ROOT_PATH).resolve()
+            if root not in p.parents:
+                return jsonify({'error': 'invalid path'}), 400
+
+            if p.exists():
+                p.unlink()
+        elif src.kind == 'claude':
+            # Persist delete as a hide flag.
+            set_override(Config.DATA_ROOT_PATH / src.folder, f"claude:{chat_id}", {"deleted": True})
+        else:
             return jsonify({'error': f'Unsupported delete source: {src.kind}'}), 400
-
-        p = Path(src.file_path).resolve()
-        root = Path(Config.DATA_ROOT_PATH).resolve()
-        if root not in p.parents:
-            return jsonify({'error': 'invalid path'}), 400
-
-        if p.exists():
-            p.unlink()
 
         scanner.clear_cache()
 
         folder_to_index = folder or scanner.current_folder
+        if folder_to_index:
+            searcher.invalidate(folder_to_index)
         if folder_to_index:
             searcher.schedule_build(folder_to_index, Config.DATA_ROOT_PATH / folder_to_index)
 

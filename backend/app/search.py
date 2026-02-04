@@ -128,6 +128,38 @@ class ConversationSearcher:
         self._build_events: Dict[str, threading.Event] = {}
         self._build_errors: Dict[str, str] = {}
         self._building: Set[str] = set()
+        # If a mutation happens while building, mark the folder dirty so we rebuild once more
+        # after the in-flight build finishes (avoids stale indexes).
+        self._dirty: Set[str] = set()
+
+    def invalidate(self, folder: str) -> None:
+        """Drop an existing index so it can be rebuilt on next search/schedule_build.
+
+        Used after rename/delete operations where exports are mutated (file rename/unlink)
+        or where an overlay file changes (Claude overrides).
+        """
+        folder = (folder or "").strip()
+        if not folder:
+            return
+        with self._lock:
+            self._indexes.pop(folder, None)
+            self._build_errors.pop(folder, None)
+            self._dirty.add(folder)
+            ev = self._build_events.get(folder)
+            if ev:
+                ev.clear()
+
+    def invalidate_all(self) -> None:
+        """Drop all cached indexes."""
+        with self._lock:
+            self._indexes.clear()
+            self._build_errors.clear()
+            self._dirty = set(self._build_events.keys())
+            for ev in self._build_events.values():
+                try:
+                    ev.clear()
+                except Exception:
+                    pass
 
     def schedule_build(self, folder: str, folder_path: Path) -> None:
         """后台预热构建索引，不阻塞接口返回。"""
@@ -136,13 +168,18 @@ class ConversationSearcher:
             return
 
         with self._lock:
-            if folder in self._indexes or folder in self._building:
+            if folder in self._building:
+                # A build is already in-flight; make sure we rebuild again after it finishes.
+                self._dirty.add(folder)
+                return
+            if folder in self._indexes and folder not in self._dirty:
                 return
             ev = self._build_events.get(folder)
             if not ev:
                 ev = threading.Event()
                 self._build_events[folder] = ev
             self._building.add(folder)
+            self._dirty.discard(folder)
 
         t = threading.Thread(
             target=self._build_index_safe,
@@ -227,6 +264,7 @@ class ConversationSearcher:
         }
 
     def _build_index_safe(self, folder: str, folder_path: Path) -> None:
+        should_rebuild = False
         try:
             self._build_index(folder, folder_path)
         except Exception as e:
@@ -238,6 +276,21 @@ class ConversationSearcher:
                 ev = self._build_events.get(folder)
                 if ev:
                     ev.set()
+                if folder in self._dirty:
+                    # Another mutation happened while building; rebuild once more.
+                    should_rebuild = True
+                    self._dirty.discard(folder)
+                    self._building.add(folder)
+                    if ev:
+                        ev.clear()
+
+            if should_rebuild:
+                t = threading.Thread(
+                    target=self._build_index_safe,
+                    args=(folder, folder_path),
+                    daemon=True,
+                )
+                t.start()
 
     def _rebuild_token_indexes(self, idx: FolderSearchIndex) -> None:
         idx.token_index = {}
@@ -302,6 +355,12 @@ class ConversationSearcher:
                                 continue
                             rec = by_uuid.get(chat_id)
                             conv = normalize_claude_conversation(rec.raw)
+
+                        # Apply persisted title overrides (stored in listing) so:
+                        # - searching by the renamed title works
+                        # - snippet starts with the new title instead of the old export title
+                        if isinstance(conv, dict) and isinstance(title, str) and title.strip():
+                            conv["title"] = title.strip()
 
                         blob = extract_search_text_from_normalized(conv)
                         blob_view = _normalize_space(blob)

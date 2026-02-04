@@ -19,6 +19,7 @@ from app.external_sources import (
     load_claude_export,
     load_gemini_activity,
 )
+from app.overrides import load_overrides
 
 class DataFileHandler(FileSystemEventHandler):
     """文件系统事件处理器"""
@@ -211,6 +212,7 @@ class ConversationScanner:
             claude_cache: ClaudeExportCache = load_claude_export(folder_name=cache_key, folder_path=folder_path)
             listing: Dict[str, List[Dict]] = {}
             lookup: Dict[Tuple[str, str], ChatSource] = {}
+            overrides = load_overrides(folder_path).data.get("items") or {}
 
             # Build project categories.
             projects = list(getattr(claude_cache, 'projects', []) or [])
@@ -371,6 +373,14 @@ class ConversationScanner:
                 if not title or title.lower() == 'untitled':
                     title = _first_user_snippet(conv_raw) or 'Untitled'
 
+                ov = overrides.get(f"claude:{rec.uuid}")
+                if isinstance(ov, dict) and ov.get("deleted") is True:
+                    continue
+                if isinstance(ov, dict):
+                    t2 = ov.get("title")
+                    if isinstance(t2, str) and t2.strip():
+                        title = t2.strip()
+
                 listing.setdefault(cat, []).append({
                     'id': rec.uuid,
                     'title': title,
@@ -379,7 +389,7 @@ class ConversationScanner:
                     'project_name': proj_name,
                     'update_time': rec.updated_at,
                     'create_time': rec.created_at,
-                    'can_edit': False,
+                    'can_edit': True,
                     '_sort_time': sort_time,
                 })
                 lookup[(cat, rec.uuid)] = ChatSource(
