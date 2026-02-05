@@ -449,6 +449,42 @@ def search_conversations():
         return jsonify({'error': str(e)}), 500
 
 
+@api.route('/search/prewarm', methods=['GET'])
+def prewarm_search_indexes():
+    """预热搜索索引（不阻塞），用于减少首次搜索等待时间。
+
+    Query params:
+        scope: 'all' | 'folder'（默认 folder）
+        folder: 文件夹名称（scope=folder 时可选）
+    """
+    folder = request.args.get('folder')
+    scope = (request.args.get('scope') or 'folder').strip().lower()
+
+    try:
+        if scope == 'all':
+            folders = scanner.get_available_folders()
+            for folder_name in folders:
+                folder_path = Config.DATA_ROOT_PATH / folder_name
+                searcher.schedule_build(folder_name, folder_path)
+            return jsonify({'success': True, 'scope': 'all', 'scheduled': len(folders)})
+
+        folder_to_use = (folder or scanner.current_folder or '').strip()
+        if not folder_to_use:
+            folders = scanner.get_available_folders()
+            folder_to_use = folders[0] if folders else ''
+            if folder_to_use:
+                scanner.set_folder(folder_to_use)
+
+        if not folder_to_use:
+            return jsonify({'success': True, 'scope': 'folder', 'folder': '', 'scheduled': 0})
+
+        folder_path = Config.DATA_ROOT_PATH / folder_to_use
+        searcher.schedule_build(folder_to_use, folder_path)
+        return jsonify({'success': True, 'scope': 'folder', 'folder': folder_to_use, 'scheduled': 1})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @api.route('/health', methods=['GET'])
 def health_check():
     """健康检查"""

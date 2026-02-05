@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import SearchModal from './components/SearchModal';
@@ -17,6 +17,7 @@ function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [shuttingDown, setShuttingDown] = useState(false);
   const [renameState, setRenameState] = useState({ open: false, chatId: null, category: null, title: '' });
+  const prewarmAllOnceRef = useRef(false);
 
   // 加载文件夹列表
   useEffect(() => {
@@ -26,6 +27,19 @@ function App() {
         setFolders(foldersFromApi);
         setCurrentFolder(response?.data?.current || foldersFromApi[0] || '');
         console.log('文件夹列表加载成功:', response.data);
+
+        // Prewarm all indexes early so the first "全部文件夹" search doesn't pay the build cost.
+        if (!prewarmAllOnceRef.current && foldersFromApi.length > 1) {
+          prewarmAllOnceRef.current = true;
+          const run = () => {
+            axios.get('/api/search/prewarm', { params: { scope: 'all' } }).catch(() => {});
+          };
+          if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(run, { timeout: 1500 });
+          } else {
+            setTimeout(run, 400);
+          }
+        }
       })
       .catch(error => {
         console.error('加载文件夹列表失败:', error);

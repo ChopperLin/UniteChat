@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import atexit
+import os
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -21,6 +24,12 @@ from app.gemini_batchexecute import is_gemini_batchexecute_export, extract_gemin
 
 
 _ASCII_TOKEN_RE = re.compile(r"[0-9A-Za-z]{2,}")
+_ASCII_PREFIX_MIN_LEN = 3
+_ASCII_PREFIX_MAX_LEN = 8
+_ASCII_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "it",
+    "of", "on", "or", "that", "the", "this", "to", "with",
+}
 
 
 def _is_cjk(ch: str) -> bool:
@@ -42,6 +51,38 @@ def _parse_filename(stem: str) -> Tuple[str, str]:
     if len(parts) == 2:
         return parts[0], parts[1]
     return stem, stem
+
+
+def _looks_like_chatgpt_conversation_json(path: Path) -> bool:
+    """Fast sniffing to avoid loading huge non-conversation JSON blobs (primarily JSON arrays).
+
+    We accept any JSON object and let the slow path (json.load + schema checks) decide whether
+    it is indexable. Rejecting objects here can easily drop valid exports with alternate schemas
+    (e.g. Gemini per-conversation dumps).
+    """
+    try:
+        with open(path, "rb") as f:
+            head = f.read(64 * 1024)
+        if not head:
+            return False
+
+        # Find first non-whitespace byte
+        first = None
+        for b in head:
+            if b not in b" \t\r\n":
+                first = b
+                break
+        if first is None:
+            return False
+
+        # Many batch exports are JSON arrays; our indexer only supports per-conversation objects here.
+        if first == ord(b"["):
+            return False
+
+        return first == ord(b"{")
+    except Exception:
+        # If sniffing fails, fall back to the old behavior (attempt to load/parse).
+        return True
 
 
 def _extract_search_text(json_data: Dict) -> str:
@@ -115,6 +156,9 @@ class FolderSearchIndex:
         self.folder_path = folder_path
         self.docs: List[SearchDoc] = []
         self.token_index: Dict[str, Set[int]] = {}
+        # Prefix postings for incremental search (e.g. "dimensiona" -> "dimensional").
+        # We only store a limited prefix range to keep memory bounded.
+        self.token_prefix_index: Dict[str, Set[int]] = {}
         self.cjk_char_index: Dict[str, Set[int]] = {}
         self.built_at = 0.0
 
@@ -128,9 +172,40 @@ class ConversationSearcher:
         self._build_events: Dict[str, threading.Event] = {}
         self._build_errors: Dict[str, str] = {}
         self._building: Set[str] = set()
+        self._build_executor = ThreadPoolExecutor(max_workers=self._default_build_workers())
+        atexit.register(self._shutdown_executor)
         # If a mutation happens while building, mark the folder dirty so we rebuild once more
         # after the in-flight build finishes (avoids stale indexes).
         self._dirty: Set[str] = set()
+        # Cache per-folder query results so polling (scope=all) doesn't redo expensive work.
+        self._search_cache: Dict[Tuple[str, str, int, float], List[Dict]] = {}
+        self._search_cache_max = 256
+
+    def _shutdown_executor(self) -> None:
+        try:
+            self._build_executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            try:
+                self._build_executor.shutdown(wait=False)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _default_build_workers() -> int:
+        # Index building is disk I/O + some CPU; too many threads increases contention.
+        cpu = os.cpu_count() or 4
+        return max(2, min(4, cpu // 2))
+
+    def _submit_build(self, folder: str, folder_path: Path) -> None:
+        try:
+            self._build_executor.submit(self._build_index_safe, folder, folder_path)
+        except Exception:
+            t = threading.Thread(
+                target=self._build_index_safe,
+                args=(folder, folder_path),
+                daemon=True,
+            )
+            t.start()
 
     def invalidate(self, folder: str) -> None:
         """Drop an existing index so it can be rebuilt on next search/schedule_build.
@@ -148,6 +223,12 @@ class ConversationSearcher:
             ev = self._build_events.get(folder)
             if ev:
                 ev.clear()
+            try:
+                keys = [k for k in self._search_cache.keys() if k and k[0] == folder]
+                for k in keys:
+                    self._search_cache.pop(k, None)
+            except Exception:
+                pass
 
     def invalidate_all(self) -> None:
         """Drop all cached indexes."""
@@ -160,6 +241,7 @@ class ConversationSearcher:
                     ev.clear()
                 except Exception:
                     pass
+            self._search_cache.clear()
 
     def schedule_build(self, folder: str, folder_path: Path) -> None:
         """后台预热构建索引，不阻塞接口返回。"""
@@ -169,8 +251,9 @@ class ConversationSearcher:
 
         with self._lock:
             if folder in self._building:
-                # A build is already in-flight; make sure we rebuild again after it finishes.
-                self._dirty.add(folder)
+                # A build is already in-flight. Do not mark dirty here, otherwise polling
+                # (e.g. /api/search?scope=all) can create an endless rebuild loop.
+                # Mutations should call invalidate()/invalidate_all() to mark dirty explicitly.
                 return
             if folder in self._indexes and folder not in self._dirty:
                 return
@@ -181,12 +264,7 @@ class ConversationSearcher:
             self._building.add(folder)
             self._dirty.discard(folder)
 
-        t = threading.Thread(
-            target=self._build_index_safe,
-            args=(folder, folder_path),
-            daemon=True,
-        )
-        t.start()
+        self._submit_build(folder, folder_path)
 
     def ensure_index(self, folder: str, folder_path: Path, timeout_sec: float = 0.0) -> FolderSearchIndex:
         """确保索引存在。timeout_sec>0 时会等待后台构建完成。"""
@@ -252,7 +330,21 @@ class ConversationSearcher:
                 }
             raise
 
-        results = self._search_in_index(idx, q_norm, limit=max(1, min(int(limit or 50), 200)))
+        eff_limit = max(1, min(int(limit or 50), 200))
+        cache_key = (folder, q_norm, eff_limit, float(getattr(idx, "built_at", 0.0) or 0.0))
+        with self._lock:
+            cached = self._search_cache.get(cache_key)
+        if cached is not None:
+            results = cached
+        else:
+            results = self._search_in_index(idx, q_norm, limit=eff_limit)
+            with self._lock:
+                self._search_cache[cache_key] = results
+                while len(self._search_cache) > self._search_cache_max:
+                    try:
+                        self._search_cache.pop(next(iter(self._search_cache)))
+                    except Exception:
+                        break
         took_ms = int((time.perf_counter() - t0) * 1000)
 
         return {
@@ -285,15 +377,11 @@ class ConversationSearcher:
                         ev.clear()
 
             if should_rebuild:
-                t = threading.Thread(
-                    target=self._build_index_safe,
-                    args=(folder, folder_path),
-                    daemon=True,
-                )
-                t.start()
+                self._submit_build(folder, folder_path)
 
     def _rebuild_token_indexes(self, idx: FolderSearchIndex) -> None:
         idx.token_index = {}
+        idx.token_prefix_index = {}
         idx.cjk_char_index = {}
 
         for doc_index, doc in enumerate(idx.docs):
@@ -305,6 +393,16 @@ class ConversationSearcher:
                     s = set()
                     idx.token_index[tok] = s
                 s.add(doc_index)
+
+                if len(tok) >= _ASCII_PREFIX_MIN_LEN:
+                    max_len = min(_ASCII_PREFIX_MAX_LEN, len(tok))
+                    for plen in range(_ASCII_PREFIX_MIN_LEN, max_len + 1):
+                        p = tok[:plen]
+                        ps = idx.token_prefix_index.get(p)
+                        if ps is None:
+                            ps = set()
+                            idx.token_prefix_index[p] = ps
+                        ps.add(doc_index)
 
             cjk_chars = {ch for ch in blob_norm if _is_cjk(ch)}
             for ch in cjk_chars:
@@ -424,6 +522,9 @@ class ConversationSearcher:
 
             title_from_name, chat_id = _parse_filename(json_file.stem)
 
+            if not _looks_like_chatgpt_conversation_json(json_file):
+                continue
+
             try:
                 with open(json_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -460,6 +561,16 @@ class ConversationSearcher:
                     new_idx.token_index[tok] = s
                 s.add(doc_index)
 
+                if len(tok) >= _ASCII_PREFIX_MIN_LEN:
+                    max_len = min(_ASCII_PREFIX_MAX_LEN, len(tok))
+                    for plen in range(_ASCII_PREFIX_MIN_LEN, max_len + 1):
+                        p = tok[:plen]
+                        ps = new_idx.token_prefix_index.get(p)
+                        if ps is None:
+                            ps = set()
+                            new_idx.token_prefix_index[p] = ps
+                        ps.add(doc_index)
+
             # CJK 字符索引（中文）
             # 用 unique 字符，避免重复添加
             cjk_chars = {ch for ch in blob_norm if _is_cjk(ch)}
@@ -483,6 +594,10 @@ class ConversationSearcher:
 
         token_terms = [t for t in _ASCII_TOKEN_RE.findall(q_norm)]
         token_terms = list(dict.fromkeys(token_terms))
+        primary_tokens = [t for t in token_terms if (len(t) >= 3 and t not in _ASCII_STOPWORDS)]
+        if not primary_tokens:
+            primary_tokens = token_terms
+        is_long_ascii_query = (len(q_norm) >= 28 and len(primary_tokens) >= 3 and not cjk_terms)
 
         candidates: Optional[Set[int]] = None
 
@@ -497,15 +612,24 @@ class ConversationSearcher:
                 if not candidates:
                     break
 
-        if (candidates is None or not candidates) and token_terms:
-            for tok in token_terms:
+        if (candidates is None or not candidates) and primary_tokens:
+            postings: List[Tuple[int, Set[int]]] = []
+            for tok in primary_tokens:
                 posting = idx.token_index.get(tok)
+                if (not posting) and (len(tok) >= _ASCII_PREFIX_MIN_LEN):
+                    key = tok if len(tok) <= _ASCII_PREFIX_MAX_LEN else tok[:_ASCII_PREFIX_MAX_LEN]
+                    posting = idx.token_prefix_index.get(key)
                 if not posting:
                     candidates = set()
                     break
-                candidates = posting.copy() if candidates is None else (candidates & posting)
-                if not candidates:
-                    break
+                postings.append((len(posting), posting))
+
+            if candidates is None and postings:
+                postings.sort(key=lambda x: x[0])
+                for _, posting in postings:
+                    candidates = posting.copy() if candidates is None else (candidates & posting)
+                    if not candidates:
+                        break
 
         if candidates is None:
             candidates = set(range(len(idx.docs)))
@@ -514,15 +638,30 @@ class ConversationSearcher:
         hits: List[Tuple[int, int]] = []  # (score, doc_index)
         for di in candidates:
             doc = idx.docs[di]
-            if q_norm not in doc.text_norm:
-                continue
+            pos_phrase = -1
+            if not is_long_ascii_query:
+                pos_phrase = doc.text_norm.find(q_norm)
+                if pos_phrase < 0:
+                    continue
 
             score = 0
             title_norm = _normalize_query(doc.title)
             if q_norm in title_norm:
                 score += 100
+
+            pos = pos_phrase
+            if is_long_ascii_query:
+                if primary_tokens and all(t in title_norm for t in primary_tokens):
+                    score += 80
+                if pos < 0 and primary_tokens:
+                    best = -1
+                    for t in primary_tokens[:6]:
+                        p = doc.text_norm.find(t)
+                        if p >= 0 and (best < 0 or p < best):
+                            best = p
+                    pos = best
+
             # 越早出现越靠前
-            pos = doc.text_norm.find(q_norm)
             if pos >= 0:
                 score += max(0, 50 - min(pos, 50))
             hits.append((score, di))
@@ -532,8 +671,22 @@ class ConversationSearcher:
         out: List[Dict] = []
         for score, di in hits[:limit]:
             doc = idx.docs[di]
-            pos = doc.text_norm.find(q_norm)
-            snippet = _make_snippet(doc.text_view, pos, len(q_norm))
+            pos = -1
+            q_len = len(q_norm)
+            if not is_long_ascii_query:
+                pos = doc.text_norm.find(q_norm)
+            if pos < 0 and is_long_ascii_query and primary_tokens:
+                best = -1
+                best_len = 0
+                for t in primary_tokens[:6]:
+                    p = doc.text_norm.find(t)
+                    if p >= 0 and (best < 0 or p < best):
+                        best = p
+                        best_len = len(t)
+                pos = best
+                if best_len:
+                    q_len = best_len
+            snippet = _make_snippet(doc.text_view, pos, q_len)
             out.append({
                 'id': doc.chat_id,
                 'category': doc.category,

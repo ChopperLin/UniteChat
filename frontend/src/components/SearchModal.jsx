@@ -106,11 +106,13 @@ export default function SearchModal({
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [stats, setStats] = useState(null);
+  const [elapsedSec, setElapsedSec] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [searchHistory, setSearchHistory] = useState([]);
-  const [scopeAll, setScopeAll] = useState(false);
+  const [scopeAll, setScopeAll] = useState(true);
   const inputRef = useRef(null);
   const abortRef = useRef(null);
+  const retryCountRef = useRef(0);
 
   const qTrim = useMemo(() => q.trim(), [q]);
 
@@ -128,7 +130,7 @@ export default function SearchModal({
     setResults([]);
     setStats(null);
     setActiveIndex(0);
-    setScopeAll(false);
+    setScopeAll(true);
 
     // 使用 requestAnimationFrame 确保 DOM 渲染后再 focus
     const rafId = requestAnimationFrame(() => {
@@ -144,6 +146,16 @@ export default function SearchModal({
 
   useEffect(() => {
     if (!open) return;
+    axios.get('/api/search/prewarm', {
+      params: {
+        scope: scopeAll ? 'all' : 'folder',
+        folder: scopeAll ? undefined : folder,
+      },
+    }).catch(() => {});
+  }, [open, folder, scopeAll]);
+
+  useEffect(() => {
+    if (!open) return;
 
     // debounce search
     if (abortRef.current) {
@@ -154,12 +166,16 @@ export default function SearchModal({
     if (!qTrim) {
       setResults([]);
       setStats(null);
+      setElapsedSec(null);
       setLoading(false);
       return;
     }
 
     let cancelled = false;
     let retryTimer = null;
+    const startedAt = performance.now();
+    setElapsedSec(null);
+    retryCountRef.current = 0;
 
     const runSearch = async () => {
       const controller = new AbortController();
@@ -187,13 +203,20 @@ export default function SearchModal({
 
         if (!ready && !cancelled) {
           // 索引构建中：短轮询，直到 ready
+          retryCountRef.current += 1;
+          const baseDelay = list.length ? 700 : 260;
+          const delay = Math.min(1200, baseDelay + retryCountRef.current * 120);
           retryTimer = setTimeout(() => {
             if (!cancelled) runSearch();
-          }, 260);
+          }, delay);
           return;
         }
 
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          const totalSec = (performance.now() - startedAt) / 1000;
+          setElapsedSec(totalSec);
+          setLoading(false);
+        }
       } catch (e) {
         if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') {
           return;
@@ -201,6 +224,7 @@ export default function SearchModal({
         console.error('搜索失败:', e);
         setResults([]);
         setStats(null);
+        setElapsedSec(null);
         if (!cancelled) setLoading(false);
       }
     };
@@ -418,16 +442,18 @@ export default function SearchModal({
               {scopeAll ? '全部文件夹' : (folder || '-')}
             </button>
           </span>
-          {stats?.tookMs != null && (
+          {Number.isFinite(elapsedSec) && (
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ opacity: 0.7 }}>耗时</span>
-              <span style={{ color: '#2A2523', fontWeight: 600 }}>{stats.tookMs}ms</span>
+              <span style={{ color: '#2A2523', fontWeight: 600 }}>{elapsedSec.toFixed(2)}s</span>
             </span>
           )}
           {stats?.docCount != null && (
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ opacity: 0.7 }}>索引</span>
-              <span style={{ color: '#2A2523', fontWeight: 600 }}>{stats.docCount} 条</span>
+              <span style={{ color: '#2A2523', fontWeight: 600 }}>
+                总共 {stats.docCount} 条，检索到 {results.length} 条
+              </span>
             </span>
           )}
           {loading && (
