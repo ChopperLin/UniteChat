@@ -9,6 +9,135 @@ import 'highlight.js/styles/atom-one-light.css';
 import 'katex/dist/katex.min.css';
 import './MarkdownContent.css';
 
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function preprocessMarkdownContent(content) {
+  // 更安全的LaTeX转换方法
+  // 分步处理，避免正则表达式的贪婪匹配问题
+  if (content == null) return '';
+
+  let result = String(content);
+
+  // 1. 先处理块级公式 \[...\]
+  const blockMatches = [];
+  let blockStart = 0;
+  while (true) {
+    const startIdx = result.indexOf('\\[', blockStart);
+    if (startIdx === -1) break;
+
+    const endIdx = result.indexOf('\\]', startIdx + 2);
+    if (endIdx === -1) break;
+
+    blockMatches.push({
+      start: startIdx,
+      end: endIdx + 2,
+      formula: result.substring(startIdx + 2, endIdx),
+    });
+
+    blockStart = endIdx + 2;
+  }
+
+  // 从后往前替换，避免索引偏移
+  for (let i = blockMatches.length - 1; i >= 0; i--) {
+    const match = blockMatches[i];
+    // 清理公式内容：移除每行开头的引用块标记 "> "
+    let cleanFormula = match.formula;
+    if (cleanFormula.includes('\n>')) {
+      cleanFormula = cleanFormula
+        .split('\n')
+        .map((line) => line.replace(/^>\s*/, ''))
+        .join('\n')
+        .trim();
+    } else {
+      cleanFormula = cleanFormula.trim();
+    }
+
+    const replacement = '\n\n$$\n' + cleanFormula + '\n$$\n\n';
+    result = result.substring(0, match.start) + replacement + result.substring(match.end);
+  }
+
+  // 2. 处理行内公式 \(...\)
+  const inlineMatches = [];
+  let inlineStart = 0;
+  while (true) {
+    const startIdx = result.indexOf('\\(', inlineStart);
+    if (startIdx === -1) break;
+
+    const endIdx = result.indexOf('\\)', startIdx + 2);
+    if (endIdx === -1) break;
+
+    inlineMatches.push({
+      start: startIdx,
+      end: endIdx + 2,
+      formula: result.substring(startIdx + 2, endIdx),
+    });
+
+    inlineStart = endIdx + 2;
+  }
+
+  // 从后往前替换
+  for (let i = inlineMatches.length - 1; i >= 0; i--) {
+    const match = inlineMatches[i];
+    const replacement = '$' + match.formula.trim() + '$';
+    result = result.substring(0, match.start) + replacement + result.substring(match.end);
+  }
+
+  return result;
+}
+
+function reactChildrenToPlainText(children) {
+  let text = '';
+  React.Children.forEach(children, (child) => {
+    if (child == null) return;
+    if (typeof child === 'string' || typeof child === 'number') {
+      text += String(child);
+      return;
+    }
+    if (Array.isArray(child)) {
+      text += reactChildrenToPlainText(child);
+      return;
+    }
+    if (React.isValidElement(child)) {
+      text += reactChildrenToPlainText(child.props?.children);
+    }
+  });
+  return text;
+}
+
+function looksLikeAccidentalMarkdownCodeBlock(text) {
+  const s = String(text || '').trim();
+  if (!s) return false;
+
+  // 如果包含 fence，明显是代码/markdown 源文本，别猜
+  if (s.includes('```') || s.includes('~~~')) return false;
+
+  // 强信号：包含 markdown 链接、数学、引用、标题/列表等
+  const hasLink = /\[[^\]\n]+\]\([^\)\n]+(?:\s+\"[^\"]*\")?\)/.test(s);
+  const hasMath = /\$[^$\n]{1,200}\$/.test(s) || /\\\(|\\\[/.test(s);
+  const hasBlockQuote = /(^|\n)\s*>\s+/.test(s);
+  const hasHeading = /(^|\n)#{1,6}\s+/.test(s);
+  const hasList = /(^|\n)\s*(?:[-*+]|\d+\.)\s+/.test(s);
+  const hasMdSignal = hasLink || hasMath || hasBlockQuote || hasHeading || hasList;
+  if (!hasMdSignal) return false;
+
+  // 弱信号：更像自然语言而不是代码
+  const hasCodeKeywords =
+    /\b(const|let|var|function|class|import|export|from|return|def|public|private|package|#include|using|namespace)\b/i.test(
+      s
+    );
+  if (hasCodeKeywords) return false;
+
+  const symbolHits = (s.match(/[{};<>]/g) || []).length + (s.match(/=>|==|!=|::|:=/g) || []).length * 2;
+  if (symbolHits >= 6) return false;
+
+  const wordCount = (s.match(/\b[\p{L}\p{N}']+\b/gu) || []).length;
+  if (wordCount < 6) return false;
+
+  return true;
+}
+
 function decodeCitePayloadFromHref(href) {
   try {
     const prefix = 'cite://';
@@ -263,122 +392,77 @@ function CitationPill({ label, refs }) {
 }
 
 function MarkdownContent({ content }) {
-  // 更安全的LaTeX转换方法
-  // 分步处理，避免正则表达式的贪婪匹配问题
-  
-  let result = content;
-  
-  // 1. 先处理块级公式 \[...\]
-  const blockMatches = [];
-  let blockStart = 0;
-  while (true) {
-    const startIdx = result.indexOf('\\[', blockStart);
-    if (startIdx === -1) break;
-    
-    const endIdx = result.indexOf('\\]', startIdx + 2);
-    if (endIdx === -1) break;
-    
-    blockMatches.push({
-      start: startIdx,
-      end: endIdx + 2,
-      formula: result.substring(startIdx + 2, endIdx)
-    });
-    
-    blockStart = endIdx + 2;
-  }
-  
-  // 从后往前替换，避免索引偏移
-  for (let i = blockMatches.length - 1; i >= 0; i--) {
-    const match = blockMatches[i];
-    // 清理公式内容：移除每行开头的引用块标记 "> "
-    let cleanFormula = match.formula;
-    if (cleanFormula.includes('\n>')) {
-      cleanFormula = cleanFormula
-        .split('\n')
-        .map(line => line.replace(/^>\s*/, ''))
-        .join('\n')
-        .trim();
-    } else {
-      cleanFormula = cleanFormula.trim();
-    }
-    
-    const replacement = '\n\n$$\n' + cleanFormula + '\n$$\n\n';
-    result = result.substring(0, match.start) + replacement + result.substring(match.end);
-  }
-  
-  // 2. 处理行内公式 \(...\)
-  const inlineMatches = [];
-  let inlineStart = 0;
-  while (true) {
-    const startIdx = result.indexOf('\\(', inlineStart);
-    if (startIdx === -1) break;
-    
-    const endIdx = result.indexOf('\\)', startIdx + 2);
-    if (endIdx === -1) break;
-    
-    inlineMatches.push({
-      start: startIdx,
-      end: endIdx + 2,
-      formula: result.substring(startIdx + 2, endIdx)
-    });
-    
-    inlineStart = endIdx + 2;
-  }
-  
-  // 从后往前替换
-  for (let i = inlineMatches.length - 1; i >= 0; i--) {
-    const match = inlineMatches[i];
-    const replacement = '$' + match.formula.trim() + '$';
-    result = result.substring(0, match.start) + replacement + result.substring(match.end);
-  }
+  const result = useMemo(() => preprocessMarkdownContent(content), [content]);
+
+  const renderMarkdown = (md, depth = 0) => {
+    const safeDepth = clamp(Number(depth) || 0, 0, 3);
+    const components = {
+      // 链接在新窗口打开
+      a: ({ node, children, ...props }) => {
+        const href = props.href || '';
+        const citePayload = decodeCitePayloadFromTitle(props.title) || decodeCitePayloadFromHref(href);
+        if (citePayload) {
+          const label = React.Children.toArray(children)
+            .map((c) => (typeof c === 'string' ? c : ''))
+            .join('')
+            .trim() || 'ref';
+          return <CitationPill label={label} refs={citePayload.refs} />;
+        }
+
+        const text = React.Children.toArray(children)
+          .map((c) => (typeof c === 'string' ? c : ''))
+          .join('')
+          .trim();
+
+        // 后端输出的 citation 形态通常是 [[1]] / [[12]]
+        const m = text.match(/^\[\[(\d+)\]\]$/) || text.match(/^\[(\d+)\]$/);
+        if (m) {
+          const num = m[1];
+          return (
+            <sup className="citation-sup">
+              <a className="citation-link" target="_blank" rel="noopener noreferrer" {...props}>
+                [{num}]
+              </a>
+            </sup>
+          );
+        }
+
+        return (
+          <a target="_blank" rel="noopener noreferrer" {...props}>
+            {children}
+          </a>
+        );
+      },
+
+      // 处理“误触发的缩进代码块”：把它当成普通 markdown 再解析一次
+      pre: ({ node, children, ...props }) => {
+        if (safeDepth >= 2) {
+          return <pre {...props}>{children}</pre>;
+        }
+
+        const plain = reactChildrenToPlainText(children).replace(/\n$/, '');
+        if (looksLikeAccidentalMarkdownCodeBlock(plain)) {
+          return <div>{renderMarkdown(preprocessMarkdownContent(plain), safeDepth + 1)}</div>;
+        }
+
+        return <pre {...props}>{children}</pre>;
+      },
+    };
+
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex, [rehypeHighlight, { detect: false, ignoreMissing: true }]]}
+        components={components}
+      >
+        {md}
+      </ReactMarkdown>
+    );
+  };
 
   return (
     <div className="markdown-content">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex, rehypeHighlight]}
-        components={{
-          // 链接在新窗口打开
-          a: ({ node, children, ...props }) => {
-            const href = props.href || '';
-            const citePayload = decodeCitePayloadFromTitle(props.title) || decodeCitePayloadFromHref(href);
-            if (citePayload) {
-              const label = React.Children.toArray(children)
-                .map((c) => (typeof c === 'string' ? c : ''))
-                .join('')
-                .trim() || 'ref';
-              return <CitationPill label={label} refs={citePayload.refs} />;
-            }
-
-            const text = React.Children.toArray(children)
-              .map((c) => (typeof c === 'string' ? c : ''))
-              .join('')
-              .trim();
-
-            // 后端输出的 citation 形态通常是 [[1]] / [[12]]
-            const m = text.match(/^\[\[(\d+)\]\]$/) || text.match(/^\[(\d+)\]$/);
-            if (m) {
-              const num = m[1];
-              return (
-                <sup className="citation-sup">
-                  <a
-                    className="citation-link"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    {...props}
-                  >
-                    [{num}]
-                  </a>
-                </sup>
-              );
-            }
-
-            return <a target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
-          },
-        }}
-      >
-        {result}
-      </ReactMarkdown>
+      {renderMarkdown(result, 0)}
     </div>
   );
 }

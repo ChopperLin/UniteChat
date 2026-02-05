@@ -46,6 +46,11 @@ class ConversationParser:
             # 如果没有引用信息，直接删除cite标记
             return self.cite_pattern.sub('', text)
 
+        # Deep research citations commonly look like:  (sometimes with '+' instead of '†')
+        deep_ref_pattern = re.compile(
+            r'^[【\[]\s*(\d{1,4})\s*[†+]\s*L\s*(\d{1,6})\s*[-–—]\s*L\s*(\d{1,6})\s*[】\]]$'
+        )
+
         def _encode_cite_payload(payload: Dict[str, Any]) -> str:
             raw = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
             enc = base64.urlsafe_b64encode(raw).decode('ascii')
@@ -132,9 +137,14 @@ class ConversationParser:
         # 构建引用映射：matched_text -> links
         citation_map: Dict[str, List[Dict]] = {}
         normalized_citation_map: Dict[str, List[Dict]] = {}
+        deep_refs: List[Tuple[str, str, str, str, str]] = []
+        deep_invalid_refs: List[Tuple[str, str, str]] = []
         for ref in content_references:
             matched_text = ref.get('matched_text', '')
-            if matched_text and 'cite' in matched_text.lower():
+            if not matched_text:
+                continue
+
+            if 'cite' in matched_text.lower():
                 items = ref.get('items', [])
                 
                 # 收集链接信息
@@ -189,6 +199,24 @@ class ConversationParser:
                 if links:
                     citation_map[matched_text] = links
                     normalized_citation_map[_normalize_cite_key(matched_text)] = links
+                continue
+
+            # Deep research line-range citations:  -> linkify as [[4]](url "...")
+            m = deep_ref_pattern.match(matched_text.strip())
+            if not m:
+                continue
+
+            url = _normalize_url(ref.get('url', ''))
+            if not url:
+                # Some exports include invalid/hidden deep research citations with no URL.
+                if ref.get('invalid') is True:
+                    deep_invalid_refs.append((m.group(1), m.group(2), m.group(3)))
+                continue
+
+            num, l1, l2 = m.group(1), m.group(2), m.group(3)
+            title = (ref.get('title') or ref.get('attribution') or _domain_label(url) or 'Reference')
+            attribution = (ref.get('attribution') or _domain_label(url) or 'ref')
+            deep_refs.append((num, l1, l2, url, f"{attribution}: {title}"))
         
         def _format_citation_pill(links: List[Dict]) -> str:
             # ChatGPT 风格：每个 cite 标记对应一个“按钮”，按钮内显示来源名，多个来源显示 +N
@@ -223,7 +251,7 @@ class ConversationParser:
             # 所以这里把 href 设为第一条真实 URL，把 payload 放到 title 里。
             href = refs[0]['url']
             title = f"citepayload:{payload_enc}"
-            return f"[{label}]({href} \"{title}\")"
+            return f"[{label}](<{href}> \"{title}\")"
 
         # 按文本中出现顺序替换 cite 标记，避免 replace+排序造成编号/替换不稳定
         result_parts: List[str] = []
@@ -246,6 +274,28 @@ class ConversationParser:
 
         # 再兜底清理一次（以防 content_references 里的 matched_text 和正文略有不一致）
         result = self.cite_pattern.sub('', result)
+
+        # Deep research citations: materialize 【n†Lx-Ly】 into real links so frontend can render them.
+        # Use [[n]](...) so the visible label becomes "[n]" and is styled consistently by the frontend.
+        if deep_refs:
+            for num, l1, l2, url, label_title in deep_refs:
+                safe_title = str(label_title).replace('\n', ' ').replace('"', "'").strip()
+                if len(safe_title) > 200:
+                    safe_title = safe_title[:200]
+
+                replacement = f"[[{num}]](<{url}> \"{safe_title} (L{l1}-L{l2})\")"
+                pat = re.compile(
+                    rf'[【\[]\s*{re.escape(num)}\s*[†+]\s*L\s*{re.escape(l1)}\s*[-–—]\s*L\s*{re.escape(l2)}\s*[】\]]'
+                )
+                result = pat.sub(lambda _m, rep=replacement: rep, result)
+
+        # Remove invalid/hidden deep research markers (no URL) so they don't look like broken links.
+        if deep_invalid_refs:
+            for num, l1, l2 in deep_invalid_refs:
+                pat = re.compile(
+                    rf'[【\[]\s*{re.escape(num)}\s*[†+]\s*L\s*{re.escape(l1)}\s*[-–—]\s*L\s*{re.escape(l2)}\s*[】\]]'
+                )
+                result = pat.sub('', result)
 
         return result
     
