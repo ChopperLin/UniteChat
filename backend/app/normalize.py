@@ -66,6 +66,101 @@ def normalize_claude_conversation(
         raw = json.dumps({"refs": refs}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
+    def _domain_label(url: str) -> str:
+        try:
+            host = (urlparse(url).hostname or "").strip().lower()
+        except Exception:
+            host = ""
+        if host.startswith("www."):
+            host = host[4:]
+        if not host:
+            return "ref"
+        parts = [p for p in host.split(".") if p]
+        if len(parts) >= 2:
+            return parts[-2]
+        return host
+
+    def _materialize_text_citations(md: str, citations: Any) -> str:
+        """Insert Claude-export citations into markdown as clickable citation pills.
+
+        Claude exports store web citations separately from the text block, typically under:
+          content[i].citations[j] = {start_index, end_index, details:{url,...}}
+        Without materialization, the frontend has no way to display them.
+        """
+        if not (isinstance(md, str) and md.strip()):
+            return md or ""
+        if not isinstance(citations, list) or not citations:
+            return md
+
+        groups: Dict[tuple, List[Dict[str, Any]]] = {}
+        for c in citations:
+            if not isinstance(c, dict):
+                continue
+            si = c.get("start_index")
+            ei = c.get("end_index")
+            if not isinstance(si, int) or not isinstance(ei, int):
+                continue
+            if si < 0 or ei < 0 or si > ei or ei > len(md):
+                continue
+
+            url = c.get("url")
+            if not (isinstance(url, str) and url.strip()):
+                det = c.get("details")
+                if isinstance(det, dict):
+                    url = det.get("url")
+            if not (isinstance(url, str) and url.strip()):
+                continue
+            url = url.strip()
+
+            title = ""
+            det = c.get("details")
+            if isinstance(det, dict):
+                t2 = det.get("title") or det.get("source") or det.get("domain")
+                if isinstance(t2, str) and t2.strip():
+                    title = t2.strip()
+
+            host = _domain_label(url)
+            groups.setdefault((si, ei), []).append({"url": url, "title": title or url, "host": host})
+
+        if not groups:
+            return md
+
+        insertions: List[tuple[int, str]] = []
+        for (si, ei), refs0 in groups.items():
+            refs: List[Dict[str, Any]] = []
+            used: set[str] = set()
+            for r in refs0:
+                u = r.get("url")
+                if not (isinstance(u, str) and u.strip()):
+                    continue
+                u = u.strip()
+                if u in used:
+                    continue
+                used.add(u)
+                refs.append({
+                    "url": u,
+                    "title": str(r.get("title") or u),
+                    "host": str(r.get("host") or _domain_label(u) or "ref"),
+                })
+
+            if not refs:
+                continue
+
+            label_base = str(refs[0].get("host") or "ref")
+            label = label_base if len(refs) == 1 else f"{label_base} +{len(refs) - 1}"
+            payload = _encode_cite_payload(refs)
+
+            href = refs[0]["url"]
+            insertions.append((ei, f" [{label}](<{href}> \"citepayload:{payload}\")"))
+
+        if not insertions:
+            return md
+
+        out = md
+        for pos, ins in sorted(insertions, key=lambda t: t[0], reverse=True):
+            out = out[:pos] + ins + out[pos:]
+        return out
+
     def _materialize_artifact_citations(md: str, md_citations: Any) -> str:
         if not (isinstance(md, str) and md.strip()):
             return md or ""
@@ -246,7 +341,7 @@ def normalize_claude_conversation(
                     elif p_type == "text":
                         t = part.get("text")
                         if isinstance(t, str) and t.strip():
-                            parts.append(t)
+                            parts.append(_materialize_text_citations(t, part.get("citations")))
                     elif p_type in {"tool_result", "tool_use"}:
                         # Special-case: artifacts tool captures deep-research reports.
                         if p_type == "tool_use" and (part.get("name") == "artifacts"):
