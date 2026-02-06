@@ -195,6 +195,8 @@ function CitationPill({ label, refs }) {
     return arr;
   }, [refs, label]);
   const current = safeRefs[idx] || null;
+  const currentUrl = typeof current?.url === 'string' ? current.url.trim() : '';
+  const isClickable = Boolean(currentUrl);
 
   // 计算弹出窗口的位置
   const updatePosition = () => {
@@ -371,18 +373,23 @@ function CitationPill({ label, refs }) {
           </div>
 
           <div className="citation-popover-body">
-            {current && (
+            {current && (isClickable ? (
               <a
                 className="citation-card"
-                href={current.url}
+                href={currentUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                title={current.url}
+                title={currentUrl}
               >
                 <div className="citation-card-host">{current.host || 'source'}</div>
-                <div className="citation-card-title">{current.title || current.url}</div>
+                <div className="citation-card-title">{current.title || currentUrl}</div>
               </a>
-            )}
+            ) : (
+              <div className="citation-card no-url" title={(current.title || '').toString()}>
+                <div className="citation-card-host">{current.host || 'source'}</div>
+                <div className="citation-card-title">{current.title || 'Reference'}</div>
+              </div>
+            ))}
           </div>
         </div>,
         document.body

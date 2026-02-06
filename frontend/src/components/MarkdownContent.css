@@ -139,6 +139,16 @@
   box-shadow: 0 3px 8px rgba(42, 37, 35, 0.08);
 }
 
+.citation-card.no-url {
+  cursor: default;
+}
+
+.citation-card.no-url:hover {
+  background: #FFFFFF;
+  border-color: #E5E0DB;
+  box-shadow: 0 1px 3px rgba(42, 37, 35, 0.04);
+}
+
 /* 点击时即时反馈 - 0ms 延迟 */
 .citation-card:active {
   transform: scale(0.98);

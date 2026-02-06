@@ -13,19 +13,24 @@ class ConversationParser:
     
     def __init__(self):
         """初始化解析器，编译正则表达式"""
-        # 匹配所有cite引用标记格式：
+        # 匹配所有 cite / filecite 引用标记格式：
         # - citeturn0search3 (纯文本)
         # - citeturn0search2turn0search3turn0search4 (多个turn，纯文本)
         # - ⸢cite⸣turn0search3⸣ (Unicode字符)
         # - citeturn0search3 (ChatGPT 导出常见私有区字符，\ue200/\ue202/\ue201)
         # - [⸢cite⸣turn0view0⸣]: (带方括号)
+        # -  (文件引用，行号范围可选)
         self.cite_pattern = re.compile(
             r'(?:'
             r'⸢cite⸣(?:turn\d+[a-z]+\d+⸣)+|'  # ⸢cite⸣turn0search3⸣ / turn0news48 / turn0image1
             r'\[⸢cite⸣(?:turn\d+[a-z]+\d+⸣)+\]:?|'  # [⸢cite⸣turn0view0⸣]:
             r'\ue200cite\ue202(?:turn\d+[a-z]+\d+\ue202)*turn\d+[a-z]+\d+\ue201|'  # citeturn0search3 / turn0news48 / turn0image1
+            r'\ue200filecite\ue202turn\d+file\d+(?:\ue202L\d{1,6}-L\d{1,6})?\ue201|'  # 
+            r'[【\[]\s*\d{1,4}\s*:\s*\d{1,4}\s*[†+]\s*.*?\s*[†+]\s*L\s*\d{1,6}\s*[-–—]\s*L\s*\d{1,6}\s*[】\]]|'  # 
             r'【[^】]*?cite(?:turn\d+[a-z]+\d+)+[^】]*?】|'  # 【...citeturn0search3...】 (中文方括号)
             r'cite(?:turn\d+[a-z]+\d+)+'  # citeturn0search3 (纯文本，无Unicode)
+            r'|【[^】]*?filecite.*?】|'  # 【...filecite...】（兜底）
+            r'filecite(?:turn\d+file\d+)(?:L\d{1,6}-L\d{1,6})?'  # fileciteturn2file5L65-L75（纯文本兜底）
             r'|\ue200navlist\ue202.*?\ue201'  # navlist...
             r')',
             re.IGNORECASE
@@ -49,6 +54,12 @@ class ConversationParser:
         # Deep research citations commonly look like:  (sometimes with '+' instead of '†')
         deep_ref_pattern = re.compile(
             r'^[【\[]\s*(\d{1,4})\s*[†+]\s*L\s*(\d{1,6})\s*[-–—]\s*L\s*(\d{1,6})\s*[】\]]$'
+        )
+
+        # Some exports include "message-index:chunk-index" style line-range citations, typically pointing at file/tool outputs:
+        # 
+        deep_msgref_pattern = re.compile(
+            r'^[【\[]\s*(\d{1,4})\s*:\s*(\d{1,4})\s*[†+]\s*(.+?)\s*[†+]\s*L\s*(\d{1,6})\s*[-–—]\s*L\s*(\d{1,6})\s*[】\]]$'
         )
 
         def _encode_cite_payload(payload: Dict[str, Any]) -> str:
@@ -109,6 +120,16 @@ class ConversationParser:
                 if filtered:
                     query = urlencode(filtered, doseq=True)
             return urlunparse((p.scheme.lower(), netloc, path, p.params, query, ''))
+
+        def _extract_bracket_tag(s: str) -> str:
+            """Extract a short '[Tag]' token to use as citation pill label."""
+            try:
+                m = re.search(r'\[([A-Za-z0-9._-]{1,40})\]', s or '')
+            except Exception:
+                m = None
+            if not m:
+                return ''
+            return (m.group(1) or '').strip()
         
         def _normalize_cite_key(s: str) -> str:
             s = (s or '').strip()
@@ -125,18 +146,21 @@ class ConversationParser:
                 s = s[1:]
             if s.endswith('】'):
                 s = s[:-1]
-            # 移除【】中间可能包含的前缀文本（如 "manifold hypothesis"）
-            # 只保留 cite 标记部分
-            if 'cite' in s.lower():
-                # 查找 cite 开始的位置
-                cite_idx = s.lower().find('cite')
-                if cite_idx > 0:
-                    s = s[cite_idx:]
+            # 移除【】中间可能包含的前缀文本（如 "manifold hypothesis"），只保留标记部分
+            low = s.lower()
+            if 'filecite' in low:
+                idx = low.find('filecite')
+                if idx > 0:
+                    s = s[idx:]
+            elif 'cite' in low:
+                idx = low.find('cite')
+                if idx > 0:
+                    s = s[idx:]
             return s.strip()
 
-        # 构建引用映射：matched_text -> links
-        citation_map: Dict[str, List[Dict]] = {}
-        normalized_citation_map: Dict[str, List[Dict]] = {}
+        # 构建引用映射：matched_text -> refs(payload)
+        citation_map: Dict[str, List[Dict[str, Any]]] = {}
+        normalized_citation_map: Dict[str, List[Dict[str, Any]]] = {}
         deep_refs: List[Tuple[str, str, str, str, str]] = []
         deep_invalid_refs: List[Tuple[str, str, str]] = []
         for ref in content_references:
@@ -144,11 +168,89 @@ class ConversationParser:
             if not matched_text:
                 continue
 
-            if 'cite' in matched_text.lower():
+            ref_type = (ref.get('type') or '').lower()
+            low_mt = matched_text.lower()
+
+            # "3:10" style deep file/tool citations (even if marked invalid/hidden).
+            mm = deep_msgref_pattern.match(matched_text.strip())
+            if mm:
+                msg_idx, chunk_idx, raw_label, l1, l2 = mm.group(1), mm.group(2), mm.group(3), mm.group(4), mm.group(5)
+                raw_label = (raw_label or '').strip()
+                host = _extract_bracket_tag(raw_label) or 'file'
+                title = raw_label or f"ref {msg_idx}:{chunk_idx}"
+                title = f"{title} (L{l1}-L{l2})"
+
+                refs_payload = [{
+                    'title': title,
+                    'url': '',
+                    'host': host,
+                    'kind': 'file',
+                    'marker': f"{msg_idx}:{chunk_idx}",
+                    'line_start': int(l1) if l1.isdigit() else None,
+                    'line_end': int(l2) if l2.isdigit() else None,
+                }]
+                citation_map[matched_text] = refs_payload
+                normalized_citation_map[_normalize_cite_key(matched_text)] = refs_payload
+                continue
+
+            # File citations (my_files): 
+            # NOTE: 'filecite' contains 'cite', so we must handle it before the generic 'cite' branch.
+            if ref_type == 'file' or 'filecite' in low_mt:
+                name = (ref.get('name') or 'file').strip() or 'file'
+                file_id = ref.get('id') or ''
+
+                ip = ref.get('input_pointer') or {}
+                try:
+                    l1 = int(ip.get('line_range_start')) if ip.get('line_range_start') is not None else None
+                except Exception:
+                    l1 = None
+                try:
+                    l2 = int(ip.get('line_range_end')) if ip.get('line_range_end') is not None else None
+                except Exception:
+                    l2 = None
+
+                # Prefer a real document URL if present; otherwise keep empty (frontend will render as non-clickable).
+                file_url = _normalize_url(ref.get('cloud_doc_url', '') or ref.get('url', '') or '')
+
+                # Label/host: use file extension when possible (pdf/png/...) for compact pills.
+                ext = ''
+                try:
+                    dot = name.rfind('.')
+                    if dot >= 0 and dot < len(name) - 1:
+                        ext = name[dot + 1 :].strip().lower()
+                except Exception:
+                    ext = ''
+                host = ext or 'file'
+
+                title = name
+                if l1 is not None and l2 is not None:
+                    title = f"{name} (L{l1}-L{l2})"
+                elif l1 is not None:
+                    title = f"{name} (L{l1})"
+
+                snippet = ref.get('snippet') or ''
+                refs_payload = [{
+                    'title': title,
+                    'url': file_url,
+                    'host': host,
+                    'kind': 'file',
+                    'file_id': file_id,
+                    'name': name,
+                    'line_start': l1,
+                    'line_end': l2,
+                    'snippet': snippet,
+                }]
+
+                citation_map[matched_text] = refs_payload
+                normalized_citation_map[_normalize_cite_key(matched_text)] = refs_payload
+                continue
+
+            # Web citations: citeturn0search3
+            if 'cite' in low_mt:
                 items = ref.get('items', [])
                 
                 # 收集链接信息
-                links = []
+                links: List[Dict[str, Any]] = []
                 seen_urls = set()
                 max_links = 10
 
@@ -159,7 +261,7 @@ class ConversationParser:
                     if dedupe_key in seen_urls:
                         return
                     seen_urls.add(dedupe_key)
-                    links.append({'title': title, 'url': url})
+                    links.append({'title': title, 'url': url, 'host': _domain_label(url), 'kind': 'web'})
 
                 for item in (items or []):
                     if len(links) >= max_links:
@@ -218,22 +320,22 @@ class ConversationParser:
             attribution = (ref.get('attribution') or _domain_label(url) or 'ref')
             deep_refs.append((num, l1, l2, url, f"{attribution}: {title}"))
         
-        def _format_citation_pill(links: List[Dict]) -> str:
+        def _format_citation_pill(refs_in: List[Dict[str, Any]]) -> str:
             # ChatGPT 风格：每个 cite 标记对应一个“按钮”，按钮内显示来源名，多个来源显示 +N
-            if not links:
+            if not refs_in:
                 return ''
 
-            refs: List[Dict[str, str]] = []
-            for link in links:
-                url = link.get('url', '')
-                title = link.get('title', 'Reference')
-                if not url:
-                    continue
-                refs.append({
-                    'title': title,
-                    'url': url,
-                    'host': _domain_label(url),
-                })
+            refs: List[Dict[str, Any]] = []
+            for r in refs_in:
+                url = (r.get('url') or '').strip()
+                title = (r.get('title') or 'Reference').strip()
+                host = (r.get('host') or (_domain_label(url) if url else '') or 'ref').strip()
+                out: Dict[str, Any] = {'title': title, 'url': url, 'host': host}
+                # Pass through optional metadata for richer rendering (e.g., file citations).
+                for k in ('kind', 'file_id', 'name', 'line_start', 'line_end', 'snippet'):
+                    if k in r and r.get(k) is not None:
+                        out[k] = r.get(k)
+                refs.append(out)
 
             if not refs:
                 return ''
@@ -249,7 +351,7 @@ class ConversationParser:
             # react-markdown 默认会“清洗”不认识的协议（例如 cite://），导致 href 变空，
             # 点击就会跳到 localhost:3000。
             # 所以这里把 href 设为第一条真实 URL，把 payload 放到 title 里。
-            href = refs[0]['url']
+            href = refs[0].get('url') or 'about:blank'
             title = f"citepayload:{payload_enc}"
             return f"[{label}](<{href}> \"{title}\")"
 
