@@ -22,12 +22,11 @@ function ThinkingBlock({ thinking, thinkingSummary, thinkingDuration }) {
 
   return (
     <div style={{
-      background: '#FAF4ED',
-      border: '1px solid #E5D6C8',
-      borderRadius: '12px',
-      padding: '14px 18px',
-      marginBottom: '12px',
-      boxShadow: '0 1px 2px rgba(42, 37, 35, 0.03)'
+      background: '#F8F4EE',
+      border: '1px solid #E7DDD0',
+      borderRadius: '14px',
+      padding: '12px 14px',
+      marginBottom: '8px'
     }}>
       <button
         className="no-scale-effect"
@@ -39,18 +38,18 @@ function ThinkingBlock({ thinking, thinkingSummary, thinkingDuration }) {
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          fontSize: '14px',
-          color: '#A67C52',
-          fontWeight: '600',
+          fontSize: '13.5px',
+          color: '#6A5F58',
+          fontWeight: '560',
           width: '100%',
           padding: 0,
           transition: 'color 0.1s ease-out'
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.color = '#8B6F47';
+          e.currentTarget.style.color = '#4D433D';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.color = '#A67C52';
+          e.currentTarget.style.color = '#6A5F58';
         }}
       >
         <span style={{
@@ -60,33 +59,33 @@ function ThinkingBlock({ thinking, thinkingSummary, thinkingDuration }) {
         }}>
           ▶
         </span>
-        <span>💭 思考过程</span>
+        <span>思考过程</span>
       </button>
 
       {expanded && (
         <div style={{
           marginTop: '14px',
           paddingTop: '14px',
-          borderTop: '1px solid #E5D6C8'
+          borderTop: '1px solid #E7DDD0'
         }}>
           {hasRecap && (
             <div style={{
               marginBottom: hasThinkingSteps ? '14px' : '0',
               paddingLeft: '18px',
-              borderLeft: '3px solid #C89968'
+              borderLeft: '2px solid #CBB79D'
             }}>
               <div style={{
-                fontWeight: '600',
-                fontSize: '14px',
-                color: '#9C6644',
+                fontWeight: '560',
+                fontSize: '13.5px',
+                color: '#6A5F58',
                 marginBottom: '7px',
                 letterSpacing: '-0.01em'
               }}>
                 思考摘要
               </div>
               <div style={{
-                fontSize: '13.5px',
-                color: '#5A504A',
+                fontSize: '13px',
+                color: '#625953',
                 lineHeight: '1.6',
                 whiteSpace: 'pre-wrap'
               }}>
@@ -98,8 +97,8 @@ function ThinkingBlock({ thinking, thinkingSummary, thinkingDuration }) {
           {likelyMissingFullThinking && (
             <div style={{
               marginBottom: hasThinkingSteps ? '14px' : '0',
-              color: '#7A6B63',
-              fontSize: '12.5px',
+              color: '#7A6F67',
+              fontSize: '12px',
               lineHeight: '1.6'
             }}>
               提示：部分对话导出文件不会包含完整“思考过程”正文，只会提供思考摘要/用时或少量片段；本页面只能展示导出数据里实际存在的内容。
@@ -113,20 +112,20 @@ function ThinkingBlock({ thinking, thinkingSummary, thinkingDuration }) {
             <div key={index} style={{
               marginBottom: '14px',
               paddingLeft: '18px',
-              borderLeft: '3px solid #C89968'
+              borderLeft: '2px solid #CBB79D'
             }}>
               <div style={{
-                fontWeight: '600',
-                fontSize: '14px',
-                color: '#9C6644',
+                fontWeight: '560',
+                fontSize: '13.5px',
+                color: '#6A5F58',
                 marginBottom: '7px',
                 letterSpacing: '-0.01em'
               }}>
                 {summary}
               </div>
               <div style={{
-                fontSize: '13.5px',
-                color: '#5A504A',
+                fontSize: '13px',
+                color: '#625953',
                 lineHeight: '1.6',
                 whiteSpace: 'pre-wrap'
               }}>

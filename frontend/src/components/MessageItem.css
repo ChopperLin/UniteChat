@@ -1,0 +1,130 @@
+.message-item {
+  --assistant-column-width: 94%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.message-thinking-wrap,
+.message-bubble-wrap {
+  width: min(90%, 1080px);
+}
+
+.message-thinking-wrap {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.message-item.is-assistant .message-thinking-wrap > * {
+  width: var(--assistant-column-width);
+}
+
+.message-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.message-item.is-user .message-bubble-wrap {
+  align-items: flex-end;
+}
+
+.message-bubble {
+  border-radius: 18px;
+  padding: 18px 20px;
+  font-family: var(--font-reading);
+  line-height: 1.72;
+  max-width: 94%;
+}
+
+.message-bubble-user {
+  background: #f1eee7;
+  border: none;
+  color: var(--text-main);
+  font-size: 16.8px;
+  width: fit-content;
+  margin-right: 2%;
+  box-shadow: none;
+}
+
+.message-bubble-assistant {
+  background: transparent;
+  border: none;
+  width: var(--assistant-column-width);
+  max-width: var(--assistant-column-width);
+  padding: 0;
+  box-shadow: none;
+}
+
+.message-meta-row {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+}
+
+.message-meta-row.meta-user {
+  justify-content: flex-end;
+  margin-right: 2%;
+}
+
+.message-meta-row.meta-assistant {
+  justify-content: flex-start;
+}
+
+.message-date {
+  font-size: 12px;
+  color: #8a7f76;
+  letter-spacing: 0.01em;
+}
+
+.message-copy-btn {
+  border: 1px solid var(--border-soft);
+  background: #ffffff;
+  color: #6a5f58;
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease, background-color 0.12s ease, color 0.12s ease;
+}
+
+.message-bubble-wrap:hover .message-copy-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.message-copy-btn:hover {
+  background: #f4efe8;
+  color: #3f3732;
+}
+
+@media (max-width: 900px) {
+  .message-item {
+    --assistant-column-width: 96%;
+  }
+
+  .message-thinking-wrap,
+  .message-bubble-wrap {
+    width: min(96%, 1080px);
+  }
+
+  .message-bubble {
+    padding: 15px 14px;
+    max-width: 96%;
+  }
+
+  .message-bubble-user {
+    font-size: 16px;
+  }
+
+  .message-copy-btn {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}

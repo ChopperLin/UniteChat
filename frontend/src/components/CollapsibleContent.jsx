@@ -101,26 +101,26 @@ function CollapsibleContent({
           gap: '8px',
           width: '100%',
           marginTop: expanded ? '12px' : '4px',
-          padding: '10px 14px',
-          background: '#FAF4ED',
-          border: '1px solid #E5D6C8',
+          padding: '9px 12px',
+          background: '#F8F4EE',
+          border: '1px solid #E7DDD0',
           borderRadius: '8px',
           cursor: 'pointer',
-          fontSize: '13px',
-          color: '#A67C52',
-          fontWeight: '600',
+          fontSize: '12.5px',
+          color: '#6A5F58',
+          fontWeight: '560',
           transition: 'background-color 0.1s ease-out, color 0.1s ease-out, border-color 0.1s ease-out',
           justifyContent: 'center'
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = '#F5EDE3';
-          e.currentTarget.style.color = '#8B6F47';
-          e.currentTarget.style.borderColor = '#D4C4B0';
+          e.currentTarget.style.background = '#F1EAE0';
+          e.currentTarget.style.color = '#4D433D';
+          e.currentTarget.style.borderColor = '#D9CDBE';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.background = '#FAF4ED';
-          e.currentTarget.style.color = '#A67C52';
-          e.currentTarget.style.borderColor = '#E5D6C8';
+          e.currentTarget.style.background = '#F8F4EE';
+          e.currentTarget.style.color = '#6A5F58';
+          e.currentTarget.style.borderColor = '#E7DDD0';
         }}
       >
         <span style={{

@@ -9,6 +9,75 @@ function ellipsizeMiddle(text, maxLen = 26) {
   return `${str.slice(0, headLen)}...${str.slice(-tailLen)}`;
 }
 
+function FolderIcon({ size = 16, color = '#8A7F76' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M2.5 6.8A1.8 1.8 0 0 1 4.3 5h3.2l1.4 1.8h6.8A1.8 1.8 0 0 1 17.5 8.6v6.8a1.8 1.8 0 0 1-1.8 1.8H4.3a1.8 1.8 0 0 1-1.8-1.8V6.8Z" stroke={color} strokeWidth="1.45" strokeLinejoin="round" />
+      <path d="M2.8 9h14.4" stroke={color} strokeWidth="1.45" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ direction = 'down', size = 12, color = '#8A7F76' }) {
+  const rotate = direction === 'up' ? 180 : direction === 'right' ? -90 : direction === 'left' ? 90 : 0;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 12 12"
+      fill="none"
+      style={{ transform: `rotate(${rotate}deg)`, transition: 'transform 0.2s ease' }}
+      aria-hidden="true"
+    >
+      <path d="M2 4.2L6 8L10 4.2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PanelToggleIcon({ collapsed = false, color = '#5A504A' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="1.5" y="2.25" width="13" height="11.5" rx="2" stroke={color} strokeWidth="1.2" />
+      <path d="M5.8 2.25V13.75" stroke={color} strokeWidth="1.2" />
+      {collapsed ? (
+        <path d="M8.4 8L6.9 6.7V9.3L8.4 8Z" fill={color} />
+      ) : (
+        <path d="M7.4 8L8.9 6.7V9.3L7.4 8Z" fill={color} />
+      )}
+    </svg>
+  );
+}
+
+function MoreIcon({ color = '#6B615B' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="4" cy="8" r="1.2" fill={color} />
+      <circle cx="8" cy="8" r="1.2" fill={color} />
+      <circle cx="12" cy="8" r="1.2" fill={color} />
+    </svg>
+  );
+}
+
+function RenameIcon({ color = '#6B615B' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3 11.8L4 9.1L10.5 2.6A1.4 1.4 0 0 1 12.5 4.6L6 11.1L3 11.8Z" stroke={color} strokeWidth="1.35" strokeLinejoin="round" />
+      <path d="M9.4 3.7L11.4 5.7" stroke={color} strokeWidth="1.35" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrashIcon({ color = '#8B2E1F' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M2.7 4.6H13.3" stroke={color} strokeWidth="1.35" strokeLinecap="round" />
+      <path d="M6.2 2.8H9.8" stroke={color} strokeWidth="1.35" strokeLinecap="round" />
+      <path d="M4.2 4.6L4.9 12.7A1.2 1.2 0 0 0 6.1 13.8H9.9A1.2 1.2 0 0 0 11.1 12.7L11.8 4.6" stroke={color} strokeWidth="1.35" strokeLinejoin="round" />
+      <path d="M6.6 7.1V11.2M9.4 7.1V11.2" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function Sidebar({ 
   folders, 
   currentFolder, 
@@ -148,8 +217,8 @@ function Sidebar({
               title={currentFolder}
             >
               {/* 文件夹图标 */}
-              <span style={{ fontSize: '16px', color: '#8A7F76', flexShrink: 0 }}>
-                📁
+              <span style={{ fontSize: '16px', color: '#8A7F76', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                <FolderIcon />
               </span>
 
               {/* 当前选中的文件夹名 */}
@@ -164,26 +233,9 @@ function Sidebar({
               </span>
 
               {/* 下拉箭头 */}
-              <svg 
-                width="12" 
-                height="8" 
-                viewBox="0 0 12 8" 
-                style={{
-                  flexShrink: 0,
-                  transform: `rotate(${folderDropdownOpen ? '180deg' : '0deg'})`,
-                  transition: 'transform 0.2s ease',
-                  pointerEvents: 'none'
-                }}
-              >
-                <path 
-                  d="M1 1.5L6 6.5L11 1.5" 
-                  stroke="#8A7F76" 
-                  strokeWidth="1.5" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              </svg>
+              <span style={{ flexShrink: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                <ChevronIcon direction={folderDropdownOpen ? 'up' : 'down'} />
+              </span>
             </div>
 
             {/* 下拉菜单 */}
@@ -242,8 +294,8 @@ function Sidebar({
           onClick={onToggleCollapse}
           style={{
             padding: '8px',
-            border: 'none',
-            background: 'rgba(42, 37, 35, 0.05)',
+            border: '1px solid #D8D4CE',
+            background: '#FBF7F2',
             cursor: 'pointer',
             fontSize: '16px',
             lineHeight: 1,
@@ -257,14 +309,16 @@ function Sidebar({
             minHeight: '32px'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(42, 37, 35, 0.1)';
+            e.currentTarget.style.background = '#F2EDE7';
+            e.currentTarget.style.borderColor = '#CFC6BC';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(42, 37, 35, 0.05)';
+            e.currentTarget.style.background = '#FBF7F2';
+            e.currentTarget.style.borderColor = '#D8D4CE';
           }}
           title={collapsed ? '展开侧边栏' : '收起侧边栏'}
         >
-          {collapsed ? '☰' : '◀'}
+          <PanelToggleIcon collapsed={collapsed} />
         </button>
       </div>
 
@@ -316,9 +370,13 @@ function Sidebar({
                   <span style={{
                     fontSize: '12px',
                     color: '#8A7F76',
-                    marginLeft: '8px'
+                    marginLeft: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
                   }}>
-                    {isExpanded ? '▼' : '▶'} {chatList.length}
+                    <ChevronIcon direction={isExpanded ? 'down' : 'right'} size={10} color="#8A7F76" />
+                    {chatList.length}
                   </span>
                 </div>
 
@@ -402,7 +460,7 @@ function Sidebar({
                           }}
                           title="更多操作"
                         >
-                          ⋯
+                          <MoreIcon />
                         </button>
                         )}
 
@@ -437,13 +495,13 @@ function Sidebar({
                               }}
                               style={{
                                 width: '100%',
-                                border: 'none',
+                                border: '1px solid #E9E3DC',
                                 cursor: 'pointer',
-                                padding: '10px 12px',
+                                padding: '9px 11px',
                                 borderRadius: '10px',
-                                background: '#F7F5F2',
+                                background: '#FFFFFF',
                                 color: '#2A2523',
-                                fontWeight: '700',
+                                fontWeight: '560',
                                 fontSize: '13.5px',
                                 textAlign: 'left',
                                 display: 'flex',
@@ -451,14 +509,16 @@ function Sidebar({
                                 gap: '10px'
                               }}
                               onMouseEnter={(e) => {
-                                e.currentTarget.style.background = '#EFEAE3';
+                                e.currentTarget.style.background = '#F7F3EE';
+                                e.currentTarget.style.borderColor = '#DDD3C8';
                               }}
                               onMouseLeave={(e) => {
-                                e.currentTarget.style.background = '#F7F5F2';
+                                e.currentTarget.style.background = '#FFFFFF';
+                                e.currentTarget.style.borderColor = '#E9E3DC';
                               }}
                               title="重命名"
                             >
-                              <span style={{ width: '18px', textAlign: 'center', fontSize: '14px' }}>✏️</span>
+                              <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><RenameIcon color="#6B615B" /></span>
                               <span>重命名</span>
                             </button>
 
@@ -471,13 +531,13 @@ function Sidebar({
                               }}
                               style={{
                                 width: '100%',
-                                border: 'none',
+                                border: '1px solid #F0DAD5',
                                 cursor: 'pointer',
-                                padding: '10px 12px',
+                                padding: '9px 11px',
                                 borderRadius: '10px',
-                                background: '#FEECE7',
+                                background: '#FFF9F8',
                                 color: '#8B2E1F',
-                                fontWeight: '700',
+                                fontWeight: '560',
                                 fontSize: '13.5px',
                                 textAlign: 'left',
                                 display: 'flex',
@@ -485,14 +545,16 @@ function Sidebar({
                                 gap: '10px'
                               }}
                               onMouseEnter={(e) => {
-                                e.currentTarget.style.background = '#FBD9D1';
+                                e.currentTarget.style.background = '#FDEDE9';
+                                e.currentTarget.style.borderColor = '#E9BEB6';
                               }}
                               onMouseLeave={(e) => {
-                                e.currentTarget.style.background = '#FEECE7';
+                                e.currentTarget.style.background = '#FFF9F8';
+                                e.currentTarget.style.borderColor = '#F0DAD5';
                               }}
                               title="删除"
                             >
-                              <span style={{ width: '18px', textAlign: 'center', fontSize: '14px' }}>🗑</span>
+                              <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><TrashIcon /></span>
                               <span>删除</span>
                             </button>
                             </div>

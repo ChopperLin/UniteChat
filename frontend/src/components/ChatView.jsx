@@ -13,17 +13,16 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
       flex: 1,
       display: 'flex',
       flexDirection: 'column',
-      background: '#F7F5F2',
+      background: 'var(--bg-base)',
       minWidth: 0,
       overflow: 'hidden'
     }}>
       {/* 标题 - Claude风格 */}
       <div style={{
-        height: '72px',
-        padding: '0 32px',
+        height: '64px',
+        padding: '0 24px',
         borderBottom: '1px solid #E5E0DB',
         background: '#FDFBF9',
-        boxShadow: '0 1px 2px rgba(42, 37, 35, 0.03)',
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
@@ -33,7 +32,7 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
       }}>
         <h2 style={{ 
           fontSize: '19px', 
-          fontWeight: '560', 
+          fontWeight: '540', 
           color: 'var(--text-strong)', 
           margin: 0,
           minWidth: 0,
@@ -53,9 +52,9 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
             onClick={onOpenSearch}
             style={{
               border: '1px solid #E5E0DB',
-              background: '#FFFFFF',
-              padding: '8px 14px',
-              borderRadius: '12px',
+              background: '#FDFBF9',
+              padding: '8px 12px',
+              borderRadius: '10px',
               cursor: 'pointer',
               fontSize: '13.5px',
               lineHeight: 1.2,
@@ -65,18 +64,15 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
               gap: '10px',
               flexShrink: 0,
               fontWeight: '500',
-              transition: 'background-color 0.06s, border-color 0.06s, box-shadow 0.06s',
-              boxShadow: '0 1px 3px rgba(42, 37, 35, 0.06)'
+              transition: 'background-color 0.08s, border-color 0.08s'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#F7F5F2';
+              e.currentTarget.style.background = '#F4EFE8';
               e.currentTarget.style.borderColor = '#D4C4B0';
-              e.currentTarget.style.boxShadow = '0 2px 4px rgba(42, 37, 35, 0.1)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
+              e.currentTarget.style.background = '#FDFBF9';
               e.currentTarget.style.borderColor = '#E5E0DB';
-              e.currentTarget.style.boxShadow = '0 1px 3px rgba(42, 37, 35, 0.06)';
             }}
             title="搜索 (Ctrl+K / Ctrl+F)"
           >
@@ -110,29 +106,26 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
             onClick={onShutdown}
             style={{
               border: '1px solid #E5E0DB',
-              background: '#FFF6F4',
+              background: '#FDF7F6',
               padding: '8px 12px',
-              borderRadius: '12px',
+              borderRadius: '10px',
               cursor: 'pointer',
               fontSize: '13.5px',
               lineHeight: 1.2,
-              color: '#8B2E1F',
+              color: '#7A3C31',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              fontWeight: '600',
-              transition: 'background-color 0.06s, border-color 0.06s, box-shadow 0.06s',
-              boxShadow: '0 1px 3px rgba(42, 37, 35, 0.06)'
+              fontWeight: '560',
+              transition: 'background-color 0.08s, border-color 0.08s'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#FEECE7';
+              e.currentTarget.style.background = '#FBEDE9';
               e.currentTarget.style.borderColor = '#E3B8AE';
-              e.currentTarget.style.boxShadow = '0 2px 4px rgba(42, 37, 35, 0.1)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFF6F4';
+              e.currentTarget.style.background = '#FDF7F6';
               e.currentTarget.style.borderColor = '#E5E0DB';
-              e.currentTarget.style.boxShadow = '0 1px 3px rgba(42, 37, 35, 0.06)';
             }}
             title="退出并停止服务"
           >
@@ -174,7 +167,7 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
           justifyContent: 'center',
           fontSize: '17px',
           color: '#A89B8F',
-          background: '#F0EDE8',
+          background: 'var(--bg-base)',
           fontWeight: '400'
         }}>
           ← 选择一个对话查看（或点右上角搜索）
@@ -183,8 +176,8 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
         <>
           {/* 对话元信息栏：显示模型与推理强度 */}
           <div style={{
-            padding: '10px 32px',
-            background: '#F7F5F2',
+            padding: '8px 24px',
+            background: 'var(--bg-base)',
             borderBottom: '1px solid #E5E0DB',
             flexShrink: 0,
             display: 'flex',
@@ -219,11 +212,11 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
             flex: 1,
             overflowY: 'auto',
             overflowX: 'hidden',
-            padding: '22px 12px 30px',
-            background: '#F0EDE8'
+            padding: '18px 10px 24px',
+            background: 'var(--bg-base)'
           }}>
           <div style={{
-            maxWidth: 'min(96%, var(--measure))',
+            maxWidth: 'min(96%, 1120px)',
             margin: '0 auto',
             width: '100%'
           }}>

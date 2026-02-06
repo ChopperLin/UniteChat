@@ -84,12 +84,12 @@ code {
 .markdown-content {
   font-family: var(--font-reading);
   font-optical-sizing: auto;
-  line-height: 1.84;
+  line-height: 1.74;
   color: var(--text-main);
   max-width: 100%;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 400;
-  letter-spacing: 0.0012em;
+  letter-spacing: 0.0008em;
   font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
   font-variant-numeric: oldstyle-nums;
   hanging-punctuation: first;
@@ -100,21 +100,21 @@ code {
 .markdown-content h3,
 .markdown-content h4 {
   font-family: var(--font-reading);
-  margin-top: 1.35em;
-  margin-bottom: 0.52em;
+  margin-top: 1.28em;
+  margin-bottom: 0.48em;
   font-weight: 580;
   color: var(--text-strong);
   letter-spacing: -0.009em;
-  line-height: 1.3;
+  line-height: 1.24;
 }
 
 .markdown-content p {
-  margin-bottom: 1.02em;
+  margin-bottom: 0.88em;
   color: var(--text-main);
 }
 
 .markdown-content li {
-  margin-bottom: 0.38em;
+  margin-bottom: 0.3em;
 }
 
 .markdown-content a {
@@ -146,12 +146,12 @@ code {
   background: #faf8f6;
   border: 1px solid var(--border-soft);
   color: var(--text-main);
-  padding: 1.2em;
+  padding: 1.08em;
   border-radius: 10px;
   overflow-x: auto;
-  margin: 1.2em 0;
+  margin: 1.05em 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 .markdown-content pre code {
@@ -162,16 +162,16 @@ code {
 
 .markdown-content blockquote {
   border-left: 3px solid var(--border-warm);
-  padding-left: 1.2em;
-  margin: 1.2em 0;
+  padding-left: 1.05em;
+  margin: 1em 0;
   color: var(--text-subtle);
   font-style: italic;
 }
 
 .markdown-content ul,
 .markdown-content ol {
-  margin-left: 2em;
-  margin-bottom: 1.2em;
+  margin-left: 1.7em;
+  margin-bottom: 0.95em;
 }
 
 .markdown-content table {
