@@ -179,9 +179,10 @@ function MessageItem({ message }) {
               background: '#E8E3DB',
               padding: '16px 20px',
               borderRadius: '14px',
-              fontSize: '15.5px',
-              lineHeight: '1.7',
-              color: '#2A2523',
+              fontSize: '17px',
+              lineHeight: '1.78',
+              color: 'var(--text-main)',
+              fontFamily: 'var(--font-reading)',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
               overflowWrap: 'break-word',
@@ -265,6 +266,7 @@ function MessageItem({ message }) {
                 border: '1px solid #E5E0DB',
                 overflowX: 'auto',
                 overflowY: 'visible',
+                fontFamily: 'var(--font-reading)',
                 boxShadow: '0 1px 3px rgba(42, 37, 35, 0.04)'
               }}
             >
@@ -357,6 +359,7 @@ function MessageItem({ message }) {
               border: '1px solid #E5E0DB',
               overflowX: 'auto',
               overflowY: 'visible',
+              fontFamily: 'var(--font-reading)',
               boxShadow: '0 1px 3px rgba(42, 37, 35, 0.04)'
             }}
           >

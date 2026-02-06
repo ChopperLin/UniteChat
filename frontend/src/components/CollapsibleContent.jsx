@@ -55,7 +55,7 @@ function CollapsibleContent({
     if (isMarkdown) {
       return <MarkdownContent content={content} />;
     }
-    return <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>;
+    return <span style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-reading)', lineHeight: 1.75 }}>{content}</span>;
   }
 
   // 需要折叠的情况
@@ -72,7 +72,7 @@ function CollapsibleContent({
         {isMarkdown ? (
           <MarkdownContent content={expanded ? content : previewContent} />
         ) : (
-          <span style={{ whiteSpace: 'pre-wrap' }}>
+          <span style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-reading)', lineHeight: 1.75 }}>
             {expanded ? content : previewContent}
           </span>
         )}

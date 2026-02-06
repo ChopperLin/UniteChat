@@ -33,14 +33,15 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
       }}>
         <h2 style={{ 
           fontSize: '19px', 
-          fontWeight: '600', 
-          color: '#1A1715', 
+          fontWeight: '560', 
+          color: 'var(--text-strong)', 
           margin: 0,
           minWidth: 0,
-          letterSpacing: '-0.02em',
+          letterSpacing: '-0.012em',
           lineHeight: 1.2,
           display: 'flex',
-          alignItems: 'center'
+          alignItems: 'center',
+          fontFamily: 'var(--font-reading)'
         }}>
           <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {chatData?.title || 'UniteChat'}
@@ -58,7 +59,7 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
               cursor: 'pointer',
               fontSize: '13.5px',
               lineHeight: 1.2,
-              color: '#2A2523',
+              color: 'var(--text-main)',
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
@@ -197,8 +198,8 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
               borderRadius: '999px',
               background: '#FFFFFF',
               border: '1px solid #E5E0DB',
-              fontWeight: '600',
-              color: '#2A2523'
+              fontWeight: '560',
+              color: 'var(--text-main)'
             }}>
               {modelSlug ? `Model: ${modelSlug}` : 'Model: (unknown)'}
             </span>
@@ -207,8 +208,8 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
               borderRadius: '999px',
               background: thinkingLabel === 'extended' ? '#FFF2E3' : '#FFFFFF',
               border: '1px solid #E5E0DB',
-              fontWeight: '600',
-              color: thinkingLabel === 'extended' ? '#8B6F47' : '#2A2523'
+              fontWeight: '560',
+              color: thinkingLabel === 'extended' ? '#8B6F47' : 'var(--text-main)'
             }}>
               {`Reasoning: ${thinkingLabel}`}
             </span>
@@ -218,11 +219,11 @@ function ChatView({ chatData, loading, onOpenSearch, onShutdown, shuttingDown })
             flex: 1,
             overflowY: 'auto',
             overflowX: 'hidden',
-            padding: '24px 20px 32px',
+            padding: '22px 12px 30px',
             background: '#F0EDE8'
           }}>
           <div style={{
-            maxWidth: 'min(90%, 1200px)',
+            maxWidth: 'min(96%, var(--measure))',
             margin: '0 auto',
             width: '100%'
           }}>

@@ -1,8 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600&family=Source+Sans+3:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,350..650&display=swap');
+
 /* Claude 风格全局样式 */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+:root {
+  --bg-base: #f7f5f2;
+  --bg-panel: #fdfbf9;
+  --bg-soft: #f2ede7;
+  --text-strong: #2a2420;
+  --text-main: #3a342f;
+  --text-subtle: #686059;
+  --border-soft: #e5e0db;
+  --border-warm: #d4c4b0;
+  --font-ui: 'Source Sans 3', 'Avenir Next', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
+  --font-reading: 'Source Serif 4', 'Noto Serif SC', 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', 'Charter', 'Bitstream Charter', 'Source Han Serif SC', 'Songti SC', serif;
+  --font-mono: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace;
+  --measure: 1040px;
 }
 
 /* 下拉菜单动画 */
@@ -38,70 +55,103 @@
 }
 
 body {
-  /* Claude 风格字体系统：优先使用优雅的衬线/无衬线字体 */
-  font-family: 'Charter', 'Bitstream Charter', 'Sitka Text', 'Cambria', 
-    'Georgia', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 
-    'Helvetica Neue', sans-serif;
+  font-family: var(--font-ui);
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   /* Claude 米黄色背景 */
-  background: #F7F5F2;
-  color: #2A2523;
+  background: var(--bg-base);
+  color: var(--text-main);
   height: 100vh;
   overflow: hidden;
   font-size: 16px;
-  line-height: 1.6;
+  line-height: 1.64;
+  letter-spacing: 0.001em;
 }
 
 code {
-  font-family: 'SF Mono', 'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 #root {
   height: 100vh;
   overflow: hidden;
-  background: #F7F5F2;
+  background: var(--bg-base);
 }
 
 /* Claude 风格 Markdown 样式 */
 .markdown-content {
-  line-height: 1.75;
-  color: #2A2523;
+  font-family: var(--font-reading);
+  font-optical-sizing: auto;
+  line-height: 1.84;
+  color: var(--text-main);
   max-width: 100%;
-  font-size: 16px;
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0.0012em;
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+  font-variant-numeric: oldstyle-nums;
+  hanging-punctuation: first;
 }
 
 .markdown-content h1,
 .markdown-content h2,
-.markdown-content h3 {
-  margin-top: 1.5em;
-  margin-bottom: 0.6em;
-  font-weight: 600;
-  color: #1A1715;
-  letter-spacing: -0.01em;
+.markdown-content h3,
+.markdown-content h4 {
+  font-family: var(--font-reading);
+  margin-top: 1.35em;
+  margin-bottom: 0.52em;
+  font-weight: 580;
+  color: var(--text-strong);
+  letter-spacing: -0.009em;
+  line-height: 1.3;
 }
 
 .markdown-content p {
-  margin-bottom: 1.2em;
+  margin-bottom: 1.02em;
+  color: var(--text-main);
+}
+
+.markdown-content li {
+  margin-bottom: 0.38em;
+}
+
+.markdown-content a {
+  color: #866344;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+
+.markdown-content a:hover {
+  color: #6f4c30;
 }
 
 .markdown-content code {
-  background: #EEEAE3;
-  color: #A64A3D;
+  font-family: var(--font-mono);
+  background: #efeae3;
+  color: #7f3e35;
   padding: 3px 7px;
   border-radius: 5px;
   font-size: 0.9em;
+  letter-spacing: 0;
+}
+
+.markdown-content strong {
+  color: var(--text-strong);
+  font-weight: 600;
 }
 
 .markdown-content pre {
-  background: #FAF8F6;
-  border: 1px solid #E5E0DB;
-  color: #2A2523;
+  background: #faf8f6;
+  border: 1px solid var(--border-soft);
+  color: var(--text-main);
   padding: 1.2em;
   border-radius: 10px;
   overflow-x: auto;
   margin: 1.2em 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  line-height: 1.6;
 }
 
 .markdown-content pre code {
@@ -111,10 +161,10 @@ code {
 }
 
 .markdown-content blockquote {
-  border-left: 3px solid #D4C4B0;
+  border-left: 3px solid var(--border-warm);
   padding-left: 1.2em;
   margin: 1.2em 0;
-  color: #5A504A;
+  color: var(--text-subtle);
   font-style: italic;
 }
 
@@ -128,22 +178,24 @@ code {
   border-collapse: collapse;
   width: 100%;
   margin: 1.2em 0;
-  border: 1px solid #E5E0DB;
+  border: 1px solid var(--border-soft);
   border-radius: 8px;
   overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: 15px;
 }
 
 .markdown-content th,
 .markdown-content td {
-  border: 1px solid #E5E0DB;
+  border: 1px solid var(--border-soft);
   padding: 10px 14px;
   text-align: left;
 }
 
 .markdown-content th {
-  background: #F2EDE7;
+  background: var(--bg-soft);
   font-weight: 600;
-  color: #1A1715;
+  color: var(--text-strong);
 }
 
 /* 数学公式样式 */
