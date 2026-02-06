@@ -126,15 +126,42 @@ def _check_deep_research(path: Path) -> Tuple[bool, str]:
     return True, f"messages={len(messages)} assistant={len(a)} biggest_assistant_idx={biggest.idx} biggest_content_len={biggest.content_len}"
 
 
+def _check_math_escape_cleanup(path: Path) -> Tuple[bool, str]:
+    """Regression: KaTeX-sensitive escaping should be normalized in math spans."""
+    data = _load_json(path)
+    conv = parse_gemini_batchexecute_conversation(data)
+    messages = conv.get("messages") or []
+
+    blob = "\n\n".join(
+        str(m.get("content") or "")
+        for m in messages
+        if isinstance(m, dict) and isinstance(m.get("content"), str)
+    )
+    if not blob:
+        return False, "empty conversation content"
+
+    # Ensure the known problematic formula is normalized (subscripts + greek commands).
+    if r"$T_{pixel} = \alpha T_0 + \beta T_1 + \gamma T_2$" not in blob:
+        return False, "expected normalized T_pixel formula not found"
+
+    # These over-escaped forms are known to render incorrectly in KaTeX.
+    if r"T\_{pixel}" in blob or r"T\_0" in blob or r"\\alpha" in blob:
+        return False, "found over-escaped math tokens (e.g. T\\_0 or \\\\alpha)"
+
+    return True, "math escaping normalized for KaTeX"
+
+
 def main() -> int:
     normal = ROOT / "data" / "gemini_export_2026-02-02_Piqa" / "深度学习：21世纪的生物学_e9acfbfd90.json"
     deep = ROOT / "data" / "gemini_export_2026-02-02_Piqa" / "贝叶斯公式深度研究报告方案_05473e3116.json"
     skills = ROOT / "data" / "gemini_export_2026-02-02_Piqa" / "Skills：AI 的最佳实践结晶_55321ed1f9.json"
+    persp = ROOT / "data" / "gemini_export_2026-02-02" / "透视空间重心坐标插值难点_84593318bd.json"
 
     checks = [
         ("normal_chat", normal, _check_normal_chat),
         ("deep_research", deep, _check_deep_research),
         ("skills_preview", skills, _check_skills_youtube_preview_not_selected),
+        ("math_escape_cleanup", persp, _check_math_escape_cleanup),
     ]
 
     ok_all = True

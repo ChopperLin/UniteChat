@@ -26,7 +26,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 # Bump this when changing parsing behavior; exposed by /api/health?verbose=1.
-PARSER_VERSION = "2026-02-04-01"
+PARSER_VERSION = "2026-02-06-01"
 
 
 _BATCHEXECUTE_PREFIX = ")]}'"
@@ -289,6 +289,103 @@ def _normalize_math_delimiters(md: str) -> str:
 
     _SINGLE_LINE_DISPLAY_RE = re.compile(r"(?m)^([ \t]*)\$\$([^\n]*?)\$\$[ \t]*$")
 
+    def _normalize_math_body_escapes(body: str) -> str:
+        """Normalize over-escaped LaTeX bodies inside $...$ / $$...$$.
+
+        Gemini exports sometimes double-escape TeX commands, e.g.:
+          \\alpha, T\\_0
+        which KaTeX renders as plain text/newline control instead of symbols/subscripts.
+        """
+        if not body:
+            return body
+        if "\\\\" not in body and "\\_" not in body and "\\^" not in body:
+            return body
+
+        out = body
+
+        # Double-escaped sub/superscript operators should become real operators.
+        out = out.replace("\\\\_", "_").replace("\\\\^", "^")
+
+        # Collapse double-escaped TeX commands/symbol prefixes: \\alpha -> \alpha.
+        # Keep literal line-break command "\\" untouched (next char is '\').
+        for _ in range(3):
+            nxt = re.sub(r"\\\\(?=[A-Za-z{}()\[\]])", r"\\", out)
+            if nxt == out:
+                break
+            out = nxt
+
+        # Gemini markdown often escapes sub/superscript operators inside math.
+        # In TeX math mode, "\_" / "\^" produce literal characters; we want operators.
+        out = re.sub(r"\\_(?=[A-Za-z0-9{(])", "_", out)
+        out = re.sub(r"\\\^(?=[A-Za-z0-9{(])", "^", out)
+
+        return out
+
+    def _normalize_math_escapes_in_dollar_spans(s: str) -> str:
+        """Apply escape normalization only inside math spans."""
+        if not s or "\\\\" not in s or "$" not in s:
+            return s
+
+        out: List[str] = []
+        i = 0
+        n = len(s)
+
+        def _is_escaped(pos: int) -> bool:
+            bs = 0
+            j = pos - 1
+            while j >= 0 and s[j] == "\\":
+                bs += 1
+                j -= 1
+            return (bs % 2) == 1
+
+        while i < n:
+            if s.startswith("$$", i) and not _is_escaped(i):
+                j = i + 2
+                close = -1
+                while j < n:
+                    k = s.find("$$", j)
+                    if k < 0:
+                        break
+                    if not _is_escaped(k):
+                        close = k
+                        break
+                    j = k + 2
+                if close < 0:
+                    out.append(s[i:])
+                    break
+                body = s[i + 2 : close]
+                out.append("$$" + _normalize_math_body_escapes(body) + "$$")
+                i = close + 2
+                continue
+
+            if s[i] == "$" and not _is_escaped(i):
+                j = i + 1
+                close = -1
+                while j < n:
+                    k = s.find("$", j)
+                    if k < 0:
+                        break
+                    # Keep inline parser conservative around $$ blocks.
+                    if s.startswith("$$", k):
+                        j = k + 2
+                        continue
+                    if not _is_escaped(k):
+                        close = k
+                        break
+                    j = k + 1
+                if close < 0:
+                    out.append(s[i:])
+                    break
+                body = s[i + 1 : close]
+                out.append("$" + _normalize_math_body_escapes(body) + "$")
+                i = close + 1
+                continue
+
+            out.append(s[i])
+            i += 1
+
+        return "".join(out)
+
     def _normalize_segment(s: str) -> str:
         if not s:
             return s
@@ -312,7 +409,10 @@ def _normalize_math_delimiters(md: str) -> str:
 
         s = _SINGLE_LINE_DISPLAY_RE.sub(_normalize_single_line_display, s)
 
-        # 3) Keep output tidy; do not aggressively rewrite inline $...$.
+        # 3) Fix over-escaped TeX content inside math spans.
+        s = _normalize_math_escapes_in_dollar_spans(s)
+
+        # 4) Keep output tidy; do not aggressively rewrite inline $...$.
         s = re.sub(r"\n{4,}", "\n\n\n", s)
         return s
 
