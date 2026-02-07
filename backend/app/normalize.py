@@ -302,18 +302,10 @@ def normalize_claude_conversation(
                 continue
             sender = (msg.get("sender") or "").strip().lower()
             role = "user" if sender in {"human", "user"} else "assistant"
+            msg_ts = _safe_epoch(_iso_to_epoch_seconds(msg.get("created_at")) or _iso_to_epoch_seconds(msg.get("updated_at")))
 
             # Claude exports often include a simplified msg.text plus a richer msg.content list.
-            text = msg.get("text")
-            if isinstance(text, str):
-                content_text = text
-            else:
-                content_text = ""
-
-            thinking_steps: List[Dict[str, Any]] = []
-            thinking_summaries: List[str] = []
-            web_searches: List[Dict[str, Any]] = []
-            pending_web_search_queries: List[str] = []
+            text_fallback = msg.get("text") if isinstance(msg.get("text"), str) else ""
 
             def _find_string_payload(obj: Any) -> str:
                 if isinstance(obj, str):
@@ -334,38 +326,99 @@ def normalize_claude_conversation(
                     return ""
                 return ""
 
+            def _new_segment(mode: str) -> Dict[str, Any]:
+                return {
+                    "mode": mode,  # "text" | "reasoning"
+                    "content_parts": [],
+                    "thinking_steps": [],
+                    "thinking_summaries": [],
+                    "web_searches": [],
+                }
+
+            local_segments: List[Dict[str, Any]] = []
+            current_segment: Optional[Dict[str, Any]] = None
+            pending_web_search_queries: List[str] = []
+            tool_fallback: List[str] = []
+
+            def _flush_segment() -> None:
+                nonlocal current_segment
+                if current_segment is None:
+                    return
+
+                content_text = "\n".join([str(x) for x in current_segment.get("content_parts", []) if isinstance(x, str)]).strip()
+                thinking_steps = current_segment.get("thinking_steps") or []
+                thinking_summaries = current_segment.get("thinking_summaries") or []
+                web_searches = current_segment.get("web_searches") or []
+
+                if not content_text and not thinking_steps and not web_searches:
+                    current_segment = None
+                    return
+
+                out_msg: Dict[str, Any] = {
+                    "role": role,
+                    "ts": msg_ts,
+                    "content": content_text,
+                    "_segment_mode": str(current_segment.get("mode") or ""),
+                }
+                if thinking_steps:
+                    out_msg["thinking"] = thinking_steps
+                if thinking_summaries:
+                    out_msg["thinking_summary"] = "\n".join(thinking_summaries)
+                if web_searches:
+                    out_msg["web_searches"] = web_searches
+
+                local_segments.append(out_msg)
+                current_segment = None
+
+            def _ensure_segment(mode: str) -> Dict[str, Any]:
+                nonlocal current_segment
+                if current_segment is None:
+                    current_segment = _new_segment(mode)
+                elif current_segment.get("mode") != mode:
+                    _flush_segment()
+                    current_segment = _new_segment(mode)
+                return current_segment
+
             content_list = msg.get("content")
             if isinstance(content_list, list):
-                # Prefer text segments only; tool outputs can be huge and noisy.
-                parts: List[str] = []
-                tool_fallback: List[str] = []
                 for part in content_list:
                     if not isinstance(part, dict):
                         continue
+
                     p_type = (part.get("type") or "").strip().lower()
                     if p_type == "thinking":
                         t = part.get("thinking")
                         if not (isinstance(t, str) and t.strip()):
                             t = part.get("text")
                         if isinstance(t, str) and t.strip():
-                            thinking_steps.append({
+                            seg = _ensure_segment("reasoning")
+                            seg["thinking_steps"].append({
                                 "title": "思考",
                                 "content": t.strip(),
                             })
 
                         sums = part.get("summaries")
                         if isinstance(sums, list):
+                            collected: List[str] = []
                             for s in sums:
                                 if isinstance(s, dict) and isinstance(s.get("summary"), str) and s.get("summary").strip():
-                                    thinking_summaries.append(s.get("summary").strip())
-                    elif p_type == "text":
+                                    collected.append(s.get("summary").strip())
+                            if collected:
+                                seg = _ensure_segment("reasoning")
+                                seg["thinking_summaries"].extend(collected)
+                        continue
+
+                    if p_type == "text":
                         t = part.get("text")
                         if isinstance(t, str) and t.strip():
-                            parts.append(_materialize_text_citations(t, part.get("citations")))
-                    elif p_type in {"tool_result", "tool_use"}:
+                            seg = _ensure_segment("text")
+                            seg["content_parts"].append(_materialize_text_citations(t, part.get("citations")))
+                        continue
+
+                    if p_type in {"tool_result", "tool_use"}:
                         tool_name = str(part.get("name") or "").strip().lower()
 
-                        # Capture Claude "Search the web" activity for frontend timeline rendering.
+                        # Capture Claude "Search the web" activity and keep original interleaving.
                         if p_type == "tool_use" and tool_name == "web_search":
                             query = ""
                             inp = part.get("input")
@@ -393,7 +446,8 @@ def normalize_claude_conversation(
                                     normalized_results.append(rec)
                                     if len(normalized_results) >= 12:
                                         break
-                            web_searches.append({
+                            seg = _ensure_segment("reasoning")
+                            seg["web_searches"].append({
                                 "query": query or "Web search",
                                 "result_count": result_count,
                                 "results": normalized_results,
@@ -433,46 +487,58 @@ def normalize_claude_conversation(
                                         rec["content"] = updated
                                         rec["md_citations"] = cites
 
-                        # Generic tool payload fallback
+                        # Generic tool payload fallback (only used when message has no visible text/reasoning).
                         payload = _find_string_payload(part)
                         if isinstance(payload, str) and payload.strip():
                             tool_fallback.append(payload.strip())
-                if parts:
-                    content_text = "\n".join(parts)
-                elif (not content_text) and tool_fallback:
-                    # Only surface tool payloads when we'd otherwise show nothing.
-                    content_text = "\n\n".join(tool_fallback)
+                        continue
+
                 if pending_web_search_queries:
+                    seg = _ensure_segment("reasoning")
                     for q in pending_web_search_queries:
-                        web_searches.append({
+                        seg["web_searches"].append({
                             "query": q or "Web search",
                             "result_count": 0,
                             "results": [],
                             "status": "searching",
                         })
 
-            ts = _iso_to_epoch_seconds(msg.get("created_at")) or _iso_to_epoch_seconds(msg.get("updated_at"))
+            _flush_segment()
 
-            if isinstance(content_text, str):
-                content_text = content_text.strip()
+            # Fallback to simplified text when we failed to materialize any visible segment.
+            if not local_segments:
+                content_text = text_fallback.strip()
+                if (not content_text) and tool_fallback:
+                    content_text = "\n\n".join(tool_fallback).strip()
+                if content_text:
+                    local_segments.append({
+                        "role": role,
+                        "ts": msg_ts,
+                        "content": content_text,
+                        "_segment_mode": "text",
+                    })
 
-            # Keep messages that contain either visible content or thinking.
-            if not content_text and not thinking_steps and not web_searches:
-                continue
+            # Copy policy: user prompt is copyable; assistant only copy the primary text segment.
+            if role == "user":
+                for seg in local_segments:
+                    seg["allow_copy"] = True
+            else:
+                for seg in local_segments:
+                    seg["allow_copy"] = False
+                text_segment_indices: List[int] = []
+                for i, seg in enumerate(local_segments):
+                    c = seg.get("content")
+                    if isinstance(c, str) and c.strip():
+                        text_segment_indices.append(i)
+                if text_segment_indices:
+                    local_segments[text_segment_indices[-1]]["allow_copy"] = True
 
-            out_msg: Dict[str, Any] = {
-                "role": role,
-                "ts": _safe_epoch(ts),
-                "content": content_text or "",
-            }
-            if thinking_steps:
-                out_msg["thinking"] = thinking_steps
-            if thinking_summaries:
-                out_msg["thinking_summary"] = "\n".join(thinking_summaries)
-            if web_searches:
-                out_msg["web_searches"] = web_searches
+            # Internal helper field for normalization logic; do not expose to API.
+            for seg in local_segments:
+                if isinstance(seg, dict):
+                    seg.pop("_segment_mode", None)
 
-            messages_out.append(out_msg)
+            messages_out.extend(local_segments)
 
     # Append final artifact(s) (deep research report) as assistant messages.
     # We append at the end to keep ordering simple and avoid interleaving tool messages.
@@ -487,6 +553,7 @@ def normalize_claude_conversation(
             "role": "assistant",
             "ts": _safe_epoch(updated_at or created_at),
             "content": (header + content).strip(),
+            "allow_copy": True,
         })
 
     meta = {

@@ -1,100 +1,100 @@
 import React, { useMemo, useState } from 'react';
+import MarkdownContent from './MarkdownContent';
 import './ThinkingBlock.css';
 
 function ThinkingBlock({ thinking, thinkingSummary, thinkingDuration }) {
   const [expanded, setExpanded] = useState(false);
-  const [showAllSteps, setShowAllSteps] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
-  const hasThinkingSteps = Array.isArray(thinking) && thinking.length > 0;
-  const hasRecap = Boolean(thinkingSummary) || (typeof thinkingDuration === 'number' && thinkingDuration > 0);
+  const steps = useMemo(() => {
+    const arr = Array.isArray(thinking) ? thinking : [];
+    return arr
+      .map((s, idx) => {
+        const titleRaw = String(s?.summary || s?.title || '').trim();
+        const title = titleRaw && titleRaw !== '思考' ? titleRaw : '';
+        const content = String(s?.content || (Array.isArray(s?.chunks) ? s.chunks.join('\n') : '') || '').trim();
+        if (!content) return null;
+        return { id: `${idx}-${title}`, title, content };
+      })
+      .filter(Boolean);
+  }, [thinking]);
 
-  const totalThinkingChars = hasThinkingSteps
-    ? thinking.reduce((acc, step) => {
-        const content = step?.content || (Array.isArray(step?.chunks) ? step.chunks.join('\n') : '') || '';
-        const summary = step?.summary || step?.title || '';
-        return acc + String(content).length + String(summary).length;
-      }, 0)
-    : 0;
-
-  const likelyMissingFullThinking = hasRecap && (!hasThinkingSteps || totalThinkingChars < 120);
-
-  const summaryPreview = useMemo(() => {
-    if (typeof thinkingSummary === 'string' && thinkingSummary.trim()) {
-      return thinkingSummary.trim().split('\n').filter(Boolean)[0] || '';
-    }
-    if (hasThinkingSteps) {
-      const first = thinking[0] || {};
-      const text = String(first.summary || first.title || first.content || '').trim();
-      if (text) return text.slice(0, 140);
-    }
-    if (typeof thinkingDuration === 'number' && thinkingDuration > 0) {
-      return `已思考 ${thinkingDuration}s`;
-    }
+  const recap = useMemo(() => {
+    const s = String(thinkingSummary || '').trim();
+    if (s) return s;
+    if (typeof thinkingDuration === 'number' && thinkingDuration > 0) return 'Thinking completed.';
     return '';
-  }, [thinkingSummary, thinking, hasThinkingSteps, thinkingDuration]);
+  }, [thinkingSummary, thinkingDuration]);
 
-  if (!hasThinkingSteps && !hasRecap) {
-    return null;
-  }
+  const blocks = useMemo(() => {
+    const list = [];
+    if (recap) list.push({ kind: 'recap', title: '', content: recap });
+    for (const s of steps) list.push({ kind: 'step', title: s.title, content: s.content });
+    return list;
+  }, [recap, steps]);
 
-  const hiddenCount = hasThinkingSteps ? Math.max(0, thinking.length - 3) : 0;
-  const visibleSteps = hasThinkingSteps ? (showAllSteps ? thinking : thinking.slice(0, 3)) : [];
+  if (blocks.length === 0) return null;
+
+  const hiddenCount = Math.max(0, blocks.length - 2);
+  const visible = showAll ? blocks : blocks.slice(0, 2);
+
+  const headline = useMemo(() => {
+    const firstTitled = blocks.find((b) => b.title);
+    if (firstTitled?.title) return firstTitled.title;
+    const firstText = String(blocks[0]?.content || '').replace(/\s+/g, ' ').trim();
+    if (!firstText) return 'Thinking process';
+    return firstText.slice(0, 88) + (firstText.length > 88 ? '…' : '');
+  }, [blocks]);
 
   return (
     <div className="thinking-block">
       <button
         type="button"
         className="thinking-toggle no-scale-effect"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => {
+          setExpanded((v) => {
+            const next = !v;
+            if (!next) setShowAll(false);
+            return next;
+          });
+        }}
         aria-expanded={expanded}
       >
-        <span className="thinking-toggle-left">
-          <span className="thinking-icon" aria-hidden="true">◷</span>
-          <span className="thinking-label">思考过程</span>
-          {!expanded && summaryPreview && <span className="thinking-preview-inline">{summaryPreview}</span>}
+        <span className="thinking-toggle-main">
+          <span className="thinking-toggle-icon" aria-hidden="true">◷</span>
+          <span className="thinking-toggle-title">{expanded ? 'Thinking process' : headline}</span>
         </span>
-        <span className="thinking-toggle-right">
-          {typeof thinkingDuration === 'number' && thinkingDuration > 0 && (
-            <span className="thinking-duration">{thinkingDuration}s</span>
-          )}
-          <span className={`thinking-chevron ${expanded ? 'is-open' : ''}`} aria-hidden="true">⌄</span>
-        </span>
+        <span className={`thinking-chevron ${expanded ? 'is-open' : ''}`} aria-hidden="true">›</span>
       </button>
 
       {expanded && (
-        <div className="thinking-body">
-          {hasRecap && (
-            <div className="thinking-recap">
-              {thinkingSummary || (typeof thinkingDuration === 'number' ? `已思考 ${thinkingDuration}s` : '')}
-            </div>
-          )}
-
-          {likelyMissingFullThinking && (
-            <div className="thinking-tip">
-              提示：当前导出可能只包含思考摘要或片段，不一定有完整思考正文。
-            </div>
-          )}
-
-          {visibleSteps.map((step, index) => {
-            const summary = step?.summary || step?.title || `步骤 ${index + 1}`;
-            const content = step?.content || (Array.isArray(step?.chunks) ? step.chunks.join('\n') : '') || '';
-            return (
-              <div key={index} className="thinking-step">
-                <div className="thinking-step-title">{summary}</div>
-                <div className="thinking-step-content">{content}</div>
+        <div className="thinking-timeline">
+          {visible.map((b, idx) => (
+            <div className="thinking-node" key={`${b.kind}-${idx}`}>
+              <span className="thinking-node-icon" aria-hidden="true">◷</span>
+              <div className="thinking-node-content">
+                {b.title && <div className="thinking-node-title">{b.title}</div>}
+                <div className="thinking-node-md">
+                  <MarkdownContent content={b.content} />
+                </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
 
-          {hiddenCount > 0 && !showAllSteps && (
+          {hiddenCount > 0 && (
             <button
               type="button"
               className="thinking-more no-scale-effect"
-              onClick={() => setShowAllSteps(true)}
+              onClick={() => setShowAll((v) => !v)}
             >
-              Show more ({hiddenCount})
+              {showAll ? 'Show less' : `Show more (${hiddenCount})`}
             </button>
           )}
+
+          <div className="thinking-done">
+            <span className="thinking-node-icon done" aria-hidden="true">◉</span>
+            <span>Done</span>
+          </div>
         </div>
       )}
     </div>

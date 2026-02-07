@@ -13,7 +13,7 @@ function prettyHost(host, url) {
 }
 
 function WebSearchBlock({ searches }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const safeSearches = useMemo(() => {
     if (!Array.isArray(searches)) return [];
@@ -56,7 +56,7 @@ function WebSearchBlock({ searches }) {
           <span className="web-search-icon" aria-hidden="true">◎</span>
           <span className="web-search-title">Searched the web</span>
         </span>
-        <span className={`web-search-chevron ${expanded ? 'is-open' : ''}`} aria-hidden="true">⌄</span>
+        <span className={`web-search-chevron ${expanded ? 'is-open' : ''}`} aria-hidden="true">›</span>
       </button>
 
       {expanded && (
@@ -64,6 +64,7 @@ function WebSearchBlock({ searches }) {
           {safeSearches.map((search, idx) => (
             <section className="web-search-group" key={`${search.query}-${idx}`}>
               <div className="web-search-group-head">
+                <span className="web-search-group-icon" aria-hidden="true">◎</span>
                 <span className="web-search-query">{search.query}</span>
                 <span className="web-search-count">
                   {search.status === 'done' ? `${search.resultCount} results` : 'searching'}

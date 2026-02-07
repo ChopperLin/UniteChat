@@ -12,6 +12,12 @@ function MessageItem({ message }) {
   const hasThinking = Boolean(message?.thinking || message?.thinking_summary || message?.thinking_duration);
   const hasWebSearches = Array.isArray(message?.web_searches) && message.web_searches.length > 0;
   const hasMainContent = Boolean(message?.content);
+  const allowCopy = Boolean(
+    hasMainContent &&
+      (typeof message?.allow_copy === 'boolean'
+        ? message.allow_copy
+        : (isUser || (!hasThinking && !hasWebSearches)))
+  );
 
   const copyToClipboard = async () => {
     const s = message?.content == null ? '' : String(message.content);
@@ -38,15 +44,18 @@ function MessageItem({ message }) {
   };
 
   const ts = message?.ts;
+  const showDate = isUser;
   const dateLabel = useMemo(() => {
+    if (!showDate) return '';
     if (!ts) return '';
     const ms = Number(ts) * 1000;
     if (!Number.isFinite(ms)) return '';
     const d = new Date(ms);
     return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
-  }, [ts]);
+  }, [showDate, ts]);
 
   const fullLabel = useMemo(() => {
+    if (!showDate) return '';
     if (!ts) return '';
     const ms = Number(ts) * 1000;
     if (!Number.isFinite(ms)) return '';
@@ -58,7 +67,7 @@ function MessageItem({ message }) {
       hour: '2-digit',
       minute: '2-digit',
     });
-  }, [ts]);
+  }, [showDate, ts]);
 
   return (
     <div className={`message-item ${isUser ? 'is-user' : 'is-assistant'}`}>
@@ -88,18 +97,20 @@ function MessageItem({ message }) {
             )}
           </div>
 
-          <div className={`message-meta-row ${isUser ? 'meta-user' : 'meta-assistant'}`}>
-            {dateLabel && (
-              <span className="message-date" title={fullLabel}>
-                {dateLabel}
-              </span>
-            )}
-            {hasMainContent && (
-              <button type="button" className="message-copy-btn" onClick={copyToClipboard}>
-                {copied ? '已复制' : '复制'}
-              </button>
-            )}
-          </div>
+          {(dateLabel || allowCopy) && (
+            <div className={`message-meta-row ${isUser ? 'meta-user' : 'meta-assistant'}`}>
+              {dateLabel && (
+                <span className="message-date" title={fullLabel}>
+                  {dateLabel}
+                </span>
+              )}
+              {allowCopy && (
+                <button type="button" className="message-copy-btn" onClick={copyToClipboard}>
+                  {copied ? '已复制' : '复制'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
