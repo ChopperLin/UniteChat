@@ -55,6 +55,33 @@
   transform: rotate(90deg);
 }
 
+.web-search-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-4px);
+  visibility: hidden;
+  pointer-events: none;
+  transition: grid-template-rows 0.28s cubic-bezier(0.2, 0.65, 0.2, 1),
+              opacity 0.2s ease,
+              transform 0.22s ease,
+              visibility 0s linear 0.28s;
+}
+
+.web-search-collapse.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s, 0s, 0s, 0s;
+}
+
+.web-search-collapse-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .web-search-body {
   position: relative;
   padding: 2px 0 0 24px;

@@ -355,11 +355,89 @@ class ConversationParser:
             title = f"citepayload:{payload_enc}"
             return f"[{label}](<{href}> \"{title}\")"
 
+        def _collect_fenced_code_ranges(s: str) -> List[Tuple[int, int]]:
+            """Collect [start, end) ranges for fenced code blocks (``` / ~~~)."""
+            if not s:
+                return []
+
+            ranges: List[Tuple[int, int]] = []
+            fence_char = ''
+            fence_len = 0
+            fence_start = -1
+            pos = 0
+
+            for line in s.splitlines(keepends=True):
+                stripped = line.lstrip(' ')
+                indent = len(line) - len(stripped)
+                if indent <= 3:
+                    m = re.match(r'(`{3,}|~{3,})', stripped)
+                    if m:
+                        marker = m.group(1)
+                        ch = marker[0]
+                        mlen = len(marker)
+                        if not fence_char:
+                            fence_char = ch
+                            fence_len = mlen
+                            fence_start = pos
+                        elif ch == fence_char and mlen >= fence_len:
+                            ranges.append((fence_start, pos + len(line)))
+                            fence_char = ''
+                            fence_len = 0
+                            fence_start = -1
+                pos += len(line)
+
+            if fence_char and fence_start >= 0:
+                ranges.append((fence_start, len(s)))
+
+            return ranges
+
+        def _replace_outside_fenced(
+            s: str,
+            pattern: re.Pattern,
+            replace_fn,
+        ) -> str:
+            """Apply regex replacement only outside fenced code blocks."""
+            ranges = _collect_fenced_code_ranges(s)
+            if not ranges:
+                return pattern.sub(replace_fn, s)
+
+            out: List[str] = []
+            last_end = 0
+            range_idx = 0
+            for m in pattern.finditer(s):
+                out.append(s[last_end:m.start()])
+                while range_idx < len(ranges) and m.start() >= ranges[range_idx][1]:
+                    range_idx += 1
+                in_fence = (
+                    range_idx < len(ranges)
+                    and ranges[range_idx][0] <= m.start() < ranges[range_idx][1]
+                )
+                if in_fence:
+                    out.append(m.group(0))
+                else:
+                    out.append(replace_fn(m))
+                last_end = m.end()
+            out.append(s[last_end:])
+            return ''.join(out)
+
         # 按文本中出现顺序替换 cite 标记，避免 replace+排序造成编号/替换不稳定
         result_parts: List[str] = []
         last_end = 0
+        code_ranges = _collect_fenced_code_ranges(text)
+        range_idx = 0
         for m in self.cite_pattern.finditer(text):
             result_parts.append(text[last_end:m.start()])
+
+            while range_idx < len(code_ranges) and m.start() >= code_ranges[range_idx][1]:
+                range_idx += 1
+            in_code = (
+                range_idx < len(code_ranges)
+                and code_ranges[range_idx][0] <= m.start() < code_ranges[range_idx][1]
+            )
+            if in_code:
+                # Keep fenced code blocks clean: strip marker, do not inject markdown link.
+                last_end = m.end()
+                continue
 
             matched_text = m.group(0)
             links = citation_map.get(matched_text)
@@ -389,7 +467,7 @@ class ConversationParser:
                 pat = re.compile(
                     rf'[【\[]\s*{re.escape(num)}\s*[†+]\s*L\s*{re.escape(l1)}\s*[-–—]\s*L\s*{re.escape(l2)}\s*[】\]]'
                 )
-                result = pat.sub(lambda _m, rep=replacement: rep, result)
+                result = _replace_outside_fenced(result, pat, lambda _m, rep=replacement: rep)
 
         # Remove invalid/hidden deep research markers (no URL) so they don't look like broken links.
         if deep_invalid_refs:
@@ -397,7 +475,7 @@ class ConversationParser:
                 pat = re.compile(
                     rf'[【\[]\s*{re.escape(num)}\s*[†+]\s*L\s*{re.escape(l1)}\s*[-–—]\s*L\s*{re.escape(l2)}\s*[】\]]'
                 )
-                result = pat.sub('', result)
+                result = _replace_outside_fenced(result, pat, lambda _m: '')
 
         return result
     

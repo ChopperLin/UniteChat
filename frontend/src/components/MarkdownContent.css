@@ -1,4 +1,4 @@
-/* Citation样式 - Claude风格 */
+/* Citation样式 */
 .citation {
   display: inline;
 }
@@ -6,137 +6,156 @@
 .citation-pill {
   display: inline-flex;
   align-items: center;
-  padding: 3px 10px;
-  border: 1px solid #D4C4B0;
-  background: linear-gradient(180deg, #F7F3EE 0%, #F2EDE7 100%);
-  color: #8B6F47;
+  padding: 2px 11px;
+  border: 1px solid #d7cbbd;
+  background: #f4efe7;
+  color: #7a6144;
   font-size: 13px;
-  font-weight: 600;
-  border-radius: 14px;
+  font-weight: 560;
+  border-radius: 999px;
   cursor: pointer;
-  /* 弹性回弹过渡 - 松开时有轻微过冲效果 */
   transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
-              background 0.1s ease-out, 
-              border-color 0.1s ease-out, 
-              box-shadow 0.1s ease-out;
+              background-color 0.1s ease-out,
+              border-color 0.1s ease-out,
+              color 0.1s ease-out;
   vertical-align: baseline;
   line-height: 1.4;
-  box-shadow: 0 1px 2px rgba(42, 37, 35, 0.06);
+  box-shadow: none;
 }
 
 .citation-pill:hover {
-  background: linear-gradient(180deg, #EDE7DD 0%, #E5DDD1 100%);
-  border-color: #C4B49F;
-  box-shadow: 0 2px 4px rgba(42, 37, 35, 0.1);
+  background: #ece4d8;
+  border-color: #cbbba6;
+  color: #654e36;
 }
 
-/* 按下时立即响应 - 0ms 延迟 */
 .citation-pill:active {
-  transform: scale(0.93);
+  transform: scale(0.95);
   transition: transform 0s;
-  background: linear-gradient(180deg, #E5DDD1 0%, #DDD5C7 100%);
-  box-shadow: 0 1px 2px rgba(42, 37, 35, 0.06);
+  background: #e4dacd;
 }
 
-/* Citation弹出框 */
+/* Citation弹出框 - 极简单卡片 */
 .citation-popover-portal {
-  background: #FDFBF9;
-  border: 1px solid #E5E0DB;
-  border-radius: 14px;
-  box-shadow: 0 12px 40px rgba(42, 37, 35, 0.2);
+  background: #f7f4ef;
+  border: 1px solid #ddd5ca;
+  border-radius: 16px;
+  box-shadow: 0 16px 34px rgba(39, 34, 31, 0.14);
   min-width: 320px;
-  width: 360px;
-  max-width: 480px;
+  width: min(420px, calc(100vw - 24px));
   overflow: hidden;
+  animation: citationPopoverIn 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-.citation-popover-header {
+@keyframes citationPopoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.citation-popover-top {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 14px 18px;
-  background: #F7F5F2;
-  border-bottom: 1px solid #E5E0DB;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 13px 10px;
+  border-bottom: 1px solid #e6ded3;
 }
 
-.citation-popover-title {
+.citation-popover-label {
+  min-width: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #1A1715;
+  color: #2b2520;
   letter-spacing: -0.01em;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .citation-popover-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
-.citation-nav {
-  border: 1px solid #D4C4B0;
-  background: #FDFBF9;
-  color: #5A504A;
-  font-size: 18px;
+.citation-nav-btn {
+  width: 25px;
+  height: 25px;
+  border: 1px solid #dacfc0;
+  background: #f5eee3;
+  color: #6f6357;
+  border-radius: 999px;
   line-height: 1;
-  padding: 4px 10px;
-  border-radius: 7px;
+  font-size: 15px;
   cursor: pointer;
-  /* 弹性回弹过渡 */
-  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
-              background-color 0.1s ease-out, 
-              border-color 0.1s ease-out;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
-.citation-nav:hover:not(:disabled) {
-  background: #E8E3DB;
-  border-color: #C4B49F;
-}
-
-/* 按下时立即响应 - 0ms 延迟 */
-.citation-nav:active:not(:disabled) {
-  transform: scale(0.9);
-  transition: transform 0s;
-  background: #DDD5C7;
-}
-
-.citation-nav:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
+.citation-nav-btn:hover {
+  background: #ece4d8;
+  border-color: #cbbba6;
+  color: #574f47;
 }
 
 .citation-count {
-  font-size: 12px;
-  color: #8A7F76;
-  min-width: 40px;
+  font-size: 13px;
+  color: #7d7166;
+  min-width: 46px;
   text-align: center;
-  font-weight: 500;
+  font-weight: 560;
+  border: 1px solid #e0d7cb;
+  background: #f7f2ea;
+  border-radius: 999px;
+  padding: 3px 10px;
+  line-height: 1.2;
 }
 
-.citation-popover-body {
-  padding: 14px;
+.citation-popover-content {
+  padding: 10px 12px 12px;
+  animation: citationCardSwap 0.18s ease;
+}
+
+@keyframes citationCardSwap {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .citation-card {
   display: block;
-  padding: 14px 16px;
-  background: #FFFFFF;
-  border: 1px solid #E5E0DB;
-  border-radius: 10px;
+  padding: 13px 13px;
+  background: #fbf8f3;
+  border: 1px solid #e5ddd2;
+  border-radius: 14px;
   text-decoration: none;
-  /* 弹性回弹过渡 */
   transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
-              background-color 0.1s ease-out, 
-              border-color 0.1s ease-out, 
+              background-color 0.1s ease-out,
+              border-color 0.1s ease-out,
               box-shadow 0.1s ease-out;
-  box-shadow: 0 1px 3px rgba(42, 37, 35, 0.04);
-  min-height: 72px;
+  box-shadow: 0 1px 2px rgba(42, 37, 35, 0.03);
+  min-height: 86px;
 }
 
 .citation-card:hover {
-  background: #F7F5F2;
-  border-color: #D4C4B0;
-  box-shadow: 0 3px 8px rgba(42, 37, 35, 0.08);
+  background: #f3ede4;
+  border-color: #cdbda9;
+  box-shadow: 0 8px 16px rgba(42, 37, 35, 0.08);
 }
 
 .citation-card.no-url {
@@ -144,37 +163,67 @@
 }
 
 .citation-card.no-url:hover {
-  background: #FFFFFF;
-  border-color: #E5E0DB;
-  box-shadow: 0 1px 3px rgba(42, 37, 35, 0.04);
+  background: #fbf8f3;
+  border-color: #e5ddd2;
+  box-shadow: 0 1px 2px rgba(42, 37, 35, 0.03);
 }
 
 /* 点击时即时反馈 - 0ms 延迟 */
 .citation-card:active {
   transform: scale(0.98);
   transition: transform 0s;
-  background: #F0EBE5;
+  background: #ebe2d6;
 }
 
 .citation-card-host {
-  font-size: 11px;
-  color: #A89B8F;
-  margin-bottom: 6px;
+  font-size: 12px;
+  color: #8a7e72;
+  margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   font-weight: 600;
 }
 
 .citation-card-title {
-  font-size: 13.5px;
-  color: #2A2523;
-  line-height: 1.5;
-  font-weight: 500;
+  font-size: 14px;
+  color: #2f2925;
+  line-height: 1.45;
+  font-weight: 560;
   overflow: hidden;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
-  min-height: 3em;
+  min-height: 4.35em;
+}
+
+.citation-popover-dots {
+  padding: 0 12px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.citation-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid #d7cbbd;
+  background: #efe8dc;
+  padding: 0;
+  cursor: pointer;
+  transition: background-color 0.1s ease, transform 0.1s ease, border-color 0.1s ease;
+}
+
+.citation-dot:hover {
+  background: #e6dccf;
+  border-color: #cbbba6;
+}
+
+.citation-dot.is-active {
+  background: #8b6f47;
+  border-color: #8b6f47;
+  transform: scale(1.08);
 }
 
 /* 上标引用样式 */
@@ -185,7 +234,7 @@
 }
 
 .citation-link {
-  color: #A67C52;
+  color: #8a6a46;
   text-decoration: none;
   font-weight: 600;
   transition: color 0.15s;
@@ -193,7 +242,7 @@
 }
 
 .citation-link:hover {
-  color: #8B6F47;
+  color: #6d5238;
   text-decoration: underline;
 }
 
@@ -201,5 +250,12 @@
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .citation-popover-portal {
+    min-width: 280px;
+    width: min(380px, calc(100vw - 20px));
   }
 }

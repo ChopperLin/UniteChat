@@ -67,36 +67,38 @@ function ThinkingBlock({ thinking, thinkingSummary, thinkingDuration }) {
         <span className={`thinking-chevron ${expanded ? 'is-open' : ''}`} aria-hidden="true">›</span>
       </button>
 
-      {expanded && (
-        <div className="thinking-timeline">
-          {visible.map((b, idx) => (
-            <div className="thinking-node" key={`${b.kind}-${idx}`}>
-              <span className="thinking-node-icon" aria-hidden="true">◷</span>
-              <div className="thinking-node-content">
-                {b.title && <div className="thinking-node-title">{b.title}</div>}
-                <div className="thinking-node-md">
-                  <MarkdownContent content={b.content} />
+      <div className={`thinking-collapse ${expanded ? 'is-open' : ''}`} aria-hidden={!expanded}>
+        <div className="thinking-collapse-inner">
+          <div className="thinking-timeline">
+            {visible.map((b, idx) => (
+              <div className="thinking-node" key={`${b.kind}-${idx}`}>
+                <span className="thinking-node-icon" aria-hidden="true">◷</span>
+                <div className="thinking-node-content">
+                  {b.title && <div className="thinking-node-title">{b.title}</div>}
+                  <div className="thinking-node-md">
+                    <MarkdownContent content={b.content} />
+                  </div>
                 </div>
               </div>
+            ))}
+
+            {hiddenCount > 0 && (
+              <button
+                type="button"
+                className="thinking-more no-scale-effect"
+                onClick={() => setShowAll((v) => !v)}
+              >
+                {showAll ? 'Show less' : `Show more (${hiddenCount})`}
+              </button>
+            )}
+
+            <div className="thinking-done">
+              <span className="thinking-node-icon done" aria-hidden="true">◉</span>
+              <span>Done</span>
             </div>
-          ))}
-
-          {hiddenCount > 0 && (
-            <button
-              type="button"
-              className="thinking-more no-scale-effect"
-              onClick={() => setShowAll((v) => !v)}
-            >
-              {showAll ? 'Show less' : `Show more (${hiddenCount})`}
-            </button>
-          )}
-
-          <div className="thinking-done">
-            <span className="thinking-node-icon done" aria-hidden="true">◉</span>
-            <span>Done</span>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

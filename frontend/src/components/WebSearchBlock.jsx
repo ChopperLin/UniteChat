@@ -59,44 +59,46 @@ function WebSearchBlock({ searches }) {
         <span className={`web-search-chevron ${expanded ? 'is-open' : ''}`} aria-hidden="true">›</span>
       </button>
 
-      {expanded && (
-        <div className="web-search-body">
-          {safeSearches.map((search, idx) => (
-            <section className="web-search-group" key={`${search.query}-${idx}`}>
-              <div className="web-search-group-head">
-                <span className="web-search-group-icon" aria-hidden="true">◎</span>
-                <span className="web-search-query">{search.query}</span>
-                <span className="web-search-count">
-                  {search.status === 'done' ? `${search.resultCount} results` : 'searching'}
-                </span>
-              </div>
-
-              {search.results.length > 0 && (
-                <div className="web-search-result-list">
-                  {search.results.map((r, i) => (
-                    <a
-                      key={`${r.url}-${i}`}
-                      className="web-search-result-item"
-                      href={r.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={r.url}
-                    >
-                      <span className="web-search-result-title">{r.title}</span>
-                      <span className="web-search-result-host">{r.host}</span>
-                    </a>
-                  ))}
+      <div className={`web-search-collapse ${expanded ? 'is-open' : ''}`} aria-hidden={!expanded}>
+        <div className="web-search-collapse-inner">
+          <div className="web-search-body">
+            {safeSearches.map((search, idx) => (
+              <section className="web-search-group" key={`${search.query}-${idx}`}>
+                <div className="web-search-group-head">
+                  <span className="web-search-group-icon" aria-hidden="true">◎</span>
+                  <span className="web-search-query">{search.query}</span>
+                  <span className="web-search-count">
+                    {search.status === 'done' ? `${search.resultCount} results` : 'searching'}
+                  </span>
                 </div>
-              )}
-            </section>
-          ))}
 
-          <div className="web-search-done">
-            <span className="web-search-done-icon" aria-hidden="true">◉</span>
-            <span>Done</span>
+                {search.results.length > 0 && (
+                  <div className="web-search-result-list">
+                    {search.results.map((r, i) => (
+                      <a
+                        key={`${r.url}-${i}`}
+                        className="web-search-result-item"
+                        href={r.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={r.url}
+                      >
+                        <span className="web-search-result-title">{r.title}</span>
+                        <span className="web-search-result-host">{r.host}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </section>
+            ))}
+
+            <div className="web-search-done">
+              <span className="web-search-done-icon" aria-hidden="true">◉</span>
+              <span>Done</span>
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

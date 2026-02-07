@@ -183,55 +183,64 @@ function CitationPill({ label, refs }) {
   const [idx, setIdx] = useState(0);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const rootRef = useRef(null);
+  const popoverRef = useRef(null);
   const hoverTimeoutRef = useRef(null);
   const isHoveringRef = useRef(false);
 
-  const safeRefs = useMemo(() => {
-    const arr = Array.isArray(refs) ? refs : [];
-    // 调试信息：检查refs数量
-    if (arr.length > 0) {
-      console.log(`[Citation] "${label}" has ${arr.length} references`);
-    }
-    return arr;
-  }, [refs, label]);
+  const safeRefs = useMemo(() => (Array.isArray(refs) ? refs : []), [refs]);
   const current = safeRefs[idx] || null;
   const currentUrl = typeof current?.url === 'string' ? current.url.trim() : '';
   const isClickable = Boolean(currentUrl);
+  const total = safeRefs.length;
+  const canCycle = total > 1;
 
-  // 计算弹出窗口的位置
   const updatePosition = () => {
     if (!rootRef.current) return;
     const rect = rootRef.current.getBoundingClientRect();
     setPosition({
       top: rect.bottom + window.scrollY + 4,
-      left: rect.left + window.scrollX
+      left: rect.left + window.scrollX,
     });
   };
+
+  const gotoPrev = () => {
+    if (!canCycle) return;
+    setIdx((v) => (v - 1 + total) % total);
+  };
+
+  const gotoNext = () => {
+    if (!canCycle) return;
+    setIdx((v) => (v + 1) % total);
+  };
+
+  useEffect(() => {
+    if (!total) setOpen(false);
+    if (idx > total - 1) setIdx(0);
+  }, [idx, total]);
 
   useEffect(() => {
     if (!open) return;
     updatePosition();
-    
+
     function onDocMouseDown(e) {
       if (!rootRef.current) return;
-      const popover = document.getElementById('citation-popover-portal');
-      if (!rootRef.current.contains(e.target) && (!popover || !popover.contains(e.target))) {
+      if (!rootRef.current.contains(e.target) && !popoverRef.current?.contains(e.target)) {
         setOpen(false);
       }
     }
-    
+
     function onScroll() {
       updatePosition();
     }
-    
+
     function onResize() {
       updatePosition();
     }
-    
+
     document.addEventListener('mousedown', onDocMouseDown);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onResize);
-    
+
     return () => {
       document.removeEventListener('mousedown', onDocMouseDown);
       window.removeEventListener('scroll', onScroll, true);
@@ -243,14 +252,13 @@ function CitationPill({ label, refs }) {
     if (!open) return;
     function onKeyDown(e) {
       if (e.key === 'Escape') setOpen(false);
-      if (e.key === 'ArrowLeft') setIdx((v) => Math.max(0, v - 1));
-      if (e.key === 'ArrowRight') setIdx((v) => Math.min(safeRefs.length - 1, v + 1));
+      if (e.key === 'ArrowLeft') gotoPrev();
+      if (e.key === 'ArrowRight') gotoNext();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, safeRefs.length]);
+  }, [open, canCycle, total]);
 
-  // 清理悬停定时器
   useEffect(() => {
     return () => {
       if (hoverTimeoutRef.current) {
@@ -261,38 +269,33 @@ function CitationPill({ label, refs }) {
 
   const handleMouseEnter = () => {
     isHoveringRef.current = true;
-    // 清除任何关闭定时器
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
     }
-    // 鼠标进入时，短延迟显示（避免快速划过时频繁弹出）
     hoverTimeoutRef.current = setTimeout(() => {
       if (isHoveringRef.current) {
         setOpen(true);
         setIdx(0);
       }
-    }, 200);
+    }, 140);
   };
 
   const handleMouseLeave = () => {
     isHoveringRef.current = false;
-    // 清除显示定时器
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
     }
-    // 鼠标离开时，快速关闭
     hoverTimeoutRef.current = setTimeout(() => {
       if (!isHoveringRef.current) {
         setOpen(false);
       }
-    }, 150);
+    }, 120);
   };
 
   const handlePopoverMouseEnter = () => {
     isHoveringRef.current = true;
-    // 鼠标进入弹出窗口时，清除关闭定时器
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
@@ -301,19 +304,16 @@ function CitationPill({ label, refs }) {
 
   const handlePopoverMouseLeave = () => {
     isHoveringRef.current = false;
-    // 鼠标离开弹出窗口时，快速关闭
     hoverTimeoutRef.current = setTimeout(() => {
       if (!isHoveringRef.current) {
         setOpen(false);
       }
-    }, 150);
+    }, 120);
   };
 
-  const total = safeRefs.length;
-
   return (
-    <span 
-      className="citation" 
+    <span
+      className="citation"
       ref={rootRef}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -322,8 +322,11 @@ function CitationPill({ label, refs }) {
         type="button"
         className="citation-pill"
         onClick={() => {
-          setOpen((v) => !v);
-          setIdx(0);
+          setOpen((v) => {
+            const next = !v;
+            if (next) setIdx(0);
+            return next;
+          });
         }}
         aria-label="Open citations"
       >
@@ -331,48 +334,54 @@ function CitationPill({ label, refs }) {
       </button>
 
       {open && total > 0 && createPortal(
-        <div 
-          id="citation-popover-portal"
-          className="citation-popover-portal" 
-          role="dialog" 
+        <div
+          ref={popoverRef}
+          className="citation-popover-portal"
+          role="dialog"
           aria-label="Citations"
           style={{
             position: 'absolute',
             top: `${position.top}px`,
             left: `${position.left}px`,
-            zIndex: 9999
+            zIndex: 9999,
+          }}
+          onWheel={(e) => {
+            if (!canCycle) return;
+            e.preventDefault();
+            if (e.deltaY > 0) gotoNext();
+            else if (e.deltaY < 0) gotoPrev();
           }}
           onMouseEnter={handlePopoverMouseEnter}
           onMouseLeave={handlePopoverMouseLeave}
         >
-          <div className="citation-popover-header">
-            <div className="citation-popover-title">{label}</div>
-            {total > 1 && (
-              <div className="citation-popover-controls">
+          <div className="citation-popover-top">
+            <div className="citation-popover-label">{label}</div>
+            <div className="citation-popover-controls">
+              {canCycle && (
                 <button
                   type="button"
-                  className="citation-nav"
-                  onClick={() => setIdx((v) => Math.max(0, v - 1))}
-                  disabled={idx <= 0}
+                  className="citation-nav-btn no-scale-effect"
+                  onClick={gotoPrev}
                   aria-label="Previous citation"
                 >
                   ‹
                 </button>
+              )}
+              <span className="citation-count">{idx + 1}/{total}</span>
+              {canCycle && (
                 <button
                   type="button"
-                  className="citation-nav"
-                  onClick={() => setIdx((v) => Math.min(total - 1, v + 1))}
-                  disabled={idx >= total - 1}
+                  className="citation-nav-btn no-scale-effect"
+                  onClick={gotoNext}
                   aria-label="Next citation"
                 >
                   ›
                 </button>
-                <div className="citation-count">{idx + 1}/{total}</div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          <div className="citation-popover-body">
+          <div className="citation-popover-content" key={`${idx}-${currentUrl || current?.title || 'ref'}`}>
             {current && (isClickable ? (
               <a
                 className="citation-card"
@@ -391,6 +400,21 @@ function CitationPill({ label, refs }) {
               </div>
             ))}
           </div>
+
+          {canCycle && (
+            <div className="citation-popover-dots" role="tablist" aria-label="Citation pages">
+              {safeRefs.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={`citation-dot no-scale-effect ${i === idx ? 'is-active' : ''}`}
+                  onClick={() => setIdx(i)}
+                  aria-label={`Go to citation ${i + 1}`}
+                  aria-current={i === idx ? 'true' : 'false'}
+                />
+              ))}
+            </div>
+          )}
         </div>,
         document.body
       )}
