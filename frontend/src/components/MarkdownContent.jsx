@@ -129,6 +129,16 @@ function looksLikeAccidentalMarkdownCodeBlock(text) {
     );
   if (hasCodeKeywords) return false;
 
+  // Avoid unwrapping real code blocks that lack explicit language tags.
+  const lines = s.split('\n');
+  const codeLikeAssignmentLines = lines.filter((line) =>
+    /^\s*[A-Za-z_][A-Za-z0-9_.\[\]]*\s*=\s*.+$/.test(line)
+  ).length;
+  if (codeLikeAssignmentLines >= 2) return false;
+
+  const codeCommentLines = lines.filter((line) => /^\s*#\s+\S+/.test(line)).length;
+  if (codeCommentLines >= 2 && lines.length >= 4) return false;
+
   const symbolHits = (s.match(/[{};<>]/g) || []).length + (s.match(/=>|==|!=|::|:=/g) || []).length * 2;
   if (symbolHits >= 6) return false;
 
@@ -136,6 +146,36 @@ function looksLikeAccidentalMarkdownCodeBlock(text) {
   if (wordCount < 6) return false;
 
   return true;
+}
+
+function hasExplicitCodeLanguage(node, children) {
+  const classes = [];
+
+  const pushClasses = (value) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        if (typeof v === 'string') classes.push(v);
+      }
+      return;
+    }
+    if (typeof value === 'string') classes.push(value);
+  };
+
+  if (node && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      if (!child || typeof child !== 'object') continue;
+      const props = child.properties || {};
+      pushClasses(props.className);
+    }
+  }
+
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return;
+    pushClasses(child.props?.className);
+  });
+
+  return classes.some((cls) => typeof cls === 'string' && cls.startsWith('language-'));
 }
 
 function decodeCitePayloadFromHref(href) {
@@ -180,11 +220,13 @@ function decodeCitePayloadFromTitle(title) {
 
 function CitationPill({ label, refs }) {
   const [open, setOpen] = useState(false);
+  const [popoverMounted, setPopoverMounted] = useState(false);
   const [idx, setIdx] = useState(0);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const rootRef = useRef(null);
   const popoverRef = useRef(null);
   const hoverTimeoutRef = useRef(null);
+  const popoverCloseTimerRef = useRef(null);
   const isHoveringRef = useRef(false);
 
   const safeRefs = useMemo(() => (Array.isArray(refs) ? refs : []), [refs]);
@@ -217,6 +259,22 @@ function CitationPill({ label, refs }) {
     if (!total) setOpen(false);
     if (idx > total - 1) setIdx(0);
   }, [idx, total]);
+
+  useEffect(() => {
+    if (popoverCloseTimerRef.current) {
+      clearTimeout(popoverCloseTimerRef.current);
+      popoverCloseTimerRef.current = null;
+    }
+    if (open) {
+      setPopoverMounted(true);
+      return;
+    }
+    if (popoverMounted) {
+      popoverCloseTimerRef.current = setTimeout(() => {
+        setPopoverMounted(false);
+      }, 170);
+    }
+  }, [open, popoverMounted]);
 
   useEffect(() => {
     if (!open) return;
@@ -263,6 +321,9 @@ function CitationPill({ label, refs }) {
     return () => {
       if (hoverTimeoutRef.current) {
         clearTimeout(hoverTimeoutRef.current);
+      }
+      if (popoverCloseTimerRef.current) {
+        clearTimeout(popoverCloseTimerRef.current);
       }
     };
   }, []);
@@ -333,10 +394,10 @@ function CitationPill({ label, refs }) {
         {label}
       </button>
 
-      {open && total > 0 && createPortal(
+      {popoverMounted && total > 0 && createPortal(
         <div
           ref={popoverRef}
-          className="citation-popover-portal"
+          className={`citation-popover-portal ${open ? 'is-open' : 'is-closing'}`}
           role="dialog"
           aria-label="Citations"
           style={{
@@ -468,6 +529,10 @@ function MarkdownContent({ content }) {
       // 处理“误触发的缩进代码块”：把它当成普通 markdown 再解析一次
       pre: ({ node, children, ...props }) => {
         if (safeDepth >= 2) {
+          return <pre {...props}>{children}</pre>;
+        }
+
+        if (hasExplicitCodeLanguage(node, children)) {
           return <pre {...props}>{children}</pre>;
         }
 

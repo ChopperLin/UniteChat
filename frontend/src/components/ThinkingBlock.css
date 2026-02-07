@@ -56,20 +56,20 @@
 }
 
 .thinking-collapse {
-  display: grid;
-  grid-template-rows: 0fr;
+  max-height: 0;
   opacity: 0;
   transform: translateY(-4px);
   visibility: hidden;
   pointer-events: none;
-  transition: grid-template-rows 0.28s cubic-bezier(0.2, 0.65, 0.2, 1),
+  overflow: hidden;
+  transition: max-height 0.32s cubic-bezier(0.2, 0.65, 0.2, 1),
               opacity 0.2s ease,
               transform 0.22s ease,
-              visibility 0s linear 0.28s;
+              visibility 0s linear 0.32s;
 }
 
 .thinking-collapse.is-open {
-  grid-template-rows: 1fr;
+  max-height: 2600px;
   opacity: 1;
   transform: translateY(0);
   visibility: visible;
@@ -78,8 +78,7 @@
 }
 
 .thinking-collapse-inner {
-  min-height: 0;
-  overflow: hidden;
+  min-height: 1px;
 }
 
 .thinking-timeline {

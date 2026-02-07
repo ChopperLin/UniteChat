@@ -44,7 +44,23 @@
   min-width: 320px;
   width: min(420px, calc(100vw - 24px));
   overflow: hidden;
-  animation: citationPopoverIn 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
+  opacity: 0;
+  transform: translateY(-5px) scale(0.985);
+  pointer-events: none;
+}
+
+.citation-popover-portal.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  animation: citationPopoverIn 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.citation-popover-portal.is-closing {
+  opacity: 0;
+  transform: translateY(-5px) scale(0.985);
+  pointer-events: none;
+  animation: citationPopoverOut 0.17s ease forwards;
 }
 
 @keyframes citationPopoverIn {
@@ -55,6 +71,17 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes citationPopoverOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-5px) scale(0.985);
   }
 }
 

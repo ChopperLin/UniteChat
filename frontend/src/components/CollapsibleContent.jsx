@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import MarkdownContent from './MarkdownContent';
+import './CollapsibleContent.css';
 
 /**
  * 可折叠内容组件
@@ -11,7 +12,12 @@ function CollapsibleContent({
   // 用户消息和AI回复的背景色不同，渐变遮罩需要匹配
   gradientColor = '#FDFBF9'
 }) {
+  const COLLAPSED_HEIGHT = 180;
   const [expanded, setExpanded] = useState(false);
+  const [contentHeight, setContentHeight] = useState(COLLAPSED_HEIGHT);
+  const [viewportMaxHeight, setViewportMaxHeight] = useState(`${COLLAPSED_HEIGHT}px`);
+  const contentRef = useRef(null);
+  const animationFrameRef = useRef(null);
 
   // 计算内容统计信息
   const stats = useMemo(() => {
@@ -28,14 +34,7 @@ function CollapsibleContent({
   }, [content]);
 
   // 获取预览内容（前 5 行）
-  const previewContent = useMemo(() => {
-    if (!content || !stats.shouldCollapse) return content;
-    
-    const lines = content.split('\n');
-    // 取前 5 行作为预览
-    const previewLines = lines.slice(0, 5);
-    return previewLines.join('\n');
-  }, [content, stats.shouldCollapse]);
+  // 注：为了获得平滑“收起/展开”动画，这里始终渲染完整内容并通过 max-height 裁剪。
 
   // 格式化字数显示
   const formatCount = (count) => {
@@ -50,91 +49,123 @@ function CollapsibleContent({
     return null;
   }
 
+  useLayoutEffect(() => {
+    if (!stats.shouldCollapse || !contentRef.current) return;
+
+    const measure = () => {
+      const h = Math.ceil(contentRef.current.scrollHeight);
+      setContentHeight(Math.max(COLLAPSED_HEIGHT, h));
+    };
+
+    measure();
+
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(contentRef.current);
+    return () => ro.disconnect();
+  }, [content, isMarkdown, stats.shouldCollapse]);
+
+  useEffect(() => {
+    if (!stats.shouldCollapse) {
+      setExpanded(false);
+      setViewportMaxHeight(`${COLLAPSED_HEIGHT}px`);
+    }
+  }, [stats.shouldCollapse]);
+
+  useEffect(() => {
+    if (!stats.shouldCollapse) {
+      return;
+    }
+    // Keep opening animation target synced while still animating with numeric max-height.
+    if (expanded && viewportMaxHeight !== 'none') {
+      const next = `${contentHeight}px`;
+      setViewportMaxHeight((prev) => (prev === next ? prev : next));
+    }
+  }, [contentHeight, expanded, stats.shouldCollapse, viewportMaxHeight]);
+
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current != null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+
   // 不需要折叠时直接渲染
   if (!stats.shouldCollapse) {
     if (isMarkdown) {
       return <MarkdownContent content={content} />;
     }
-    return <span style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-reading)', lineHeight: 1.75 }}>{content}</span>;
+    return <span className="collapsible-plain">{content}</span>;
   }
 
   // 需要折叠的情况
+  const handleToggle = () => {
+    if (animationFrameRef.current != null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    const measuredHeight = Math.max(
+      contentHeight,
+      Math.ceil(contentRef.current?.scrollHeight || contentHeight),
+      COLLAPSED_HEIGHT
+    );
+
+    if (expanded) {
+      // Ensure we always collapse from the real current height (works even when max-height is "none").
+      setViewportMaxHeight(`${measuredHeight}px`);
+      setExpanded(false);
+      animationFrameRef.current = requestAnimationFrame(() => {
+        setViewportMaxHeight(`${COLLAPSED_HEIGHT}px`);
+      });
+      return;
+    }
+
+    // Expand from collapsed height to measured height, then unlock to "none" on transition end.
+    setViewportMaxHeight(`${COLLAPSED_HEIGHT}px`);
+    setExpanded(true);
+    animationFrameRef.current = requestAnimationFrame(() => {
+      setViewportMaxHeight(`${measuredHeight}px`);
+    });
+  };
+
+  const handleViewportTransitionEnd = (e) => {
+    if (!e || e.propertyName !== 'max-height') return;
+    if (!expanded) return;
+    setViewportMaxHeight((prev) => (prev === 'none' ? prev : 'none'));
+  };
+
   return (
-    <div style={{ position: 'relative' }}>
+    <div
+      className={`collapsible-content ${expanded ? 'is-expanded' : 'is-collapsed'}`}
+      style={{ '--collapse-gradient-color': gradientColor }}
+    >
       {/* 内容区域 */}
-      <div style={{
-        position: 'relative',
-        overflow: 'hidden',
-        // 折叠时限制高度，展开时自动
-        maxHeight: expanded ? 'none' : '180px',
-        transition: 'max-height 0.3s ease'
-      }}>
-        {isMarkdown ? (
-          <MarkdownContent content={expanded ? content : previewContent} />
-        ) : (
-          <span style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-reading)', lineHeight: 1.75 }}>
-            {expanded ? content : previewContent}
-          </span>
-        )}
-        
+      <div
+        className="collapsible-content-viewport"
+        style={{ maxHeight: viewportMaxHeight }}
+        onTransitionEnd={handleViewportTransitionEnd}
+      >
+        <div ref={contentRef}>
+          {isMarkdown ? <MarkdownContent content={content} /> : <span className="collapsible-plain">{content}</span>}
+        </div>
+
         {/* 渐变遮罩（仅折叠时显示） */}
-        {!expanded && (
-          <div style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: '60px',
-            background: `linear-gradient(transparent, ${gradientColor})`,
-            pointerEvents: 'none'
-          }} />
-        )}
+        <div className="collapsible-content-fade" />
       </div>
 
       {/* 展开/收起按钮 */}
       <button
-        className="no-scale-effect"
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          width: '100%',
-          marginTop: expanded ? '12px' : '4px',
-          padding: '9px 12px',
-          background: '#F8F4EE',
-          border: '1px solid #E7DDD0',
-          borderRadius: '8px',
-          cursor: 'pointer',
-          fontSize: '12.5px',
-          color: '#6A5F58',
-          fontWeight: '560',
-          transition: 'background-color 0.1s ease-out, color 0.1s ease-out, border-color 0.1s ease-out',
-          justifyContent: 'center'
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = '#F1EAE0';
-          e.currentTarget.style.color = '#4D433D';
-          e.currentTarget.style.borderColor = '#D9CDBE';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = '#F8F4EE';
-          e.currentTarget.style.color = '#6A5F58';
-          e.currentTarget.style.borderColor = '#E7DDD0';
-        }}
+        className="collapsible-toggle no-scale-effect"
+        onClick={handleToggle}
+        aria-expanded={expanded}
       >
-        <span style={{
-          fontSize: '10px',
-          transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
-          transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)'
-        }}>
-          ▼
+        <span className="collapsible-toggle-icon" aria-hidden="true">
+          {expanded ? '▴' : '▾'}
         </span>
         <span>
-          {expanded 
-            ? '收起' 
-            : `展开全部 (${formatCount(stats.charCount)} 字 / ${stats.lineCount} 行)`
-          }
+          {expanded ? '收起' : `展开全部 (${formatCount(stats.charCount)} 字 / ${stats.lineCount} 行)`}
         </span>
       </button>
     </div>
