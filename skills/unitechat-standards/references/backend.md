@@ -25,6 +25,8 @@
 - Keep routes thin; move logic into service/helper functions.
 - Return stable response shapes.
 - Preserve backward compatibility for existing fields whenever possible.
+- Prefer single-intent endpoints that support one-step UX flows.
+- Avoid backend contracts that force redundant frontend clicks.
 
 ## Safety
 
@@ -43,3 +45,4 @@
 - Are edge cases and null/empty inputs handled explicitly?
 - Are response structures stable for frontend callers?
 - Did we validate behavior with targeted checks?
+- Does the API shape enable a minimal UI flow without extra client orchestration?

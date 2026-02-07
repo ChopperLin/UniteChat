@@ -1,14 +1,14 @@
-"""文件扫描模块 - 扫描 data 目录，构建对话索引"""
-from dataclasses import dataclass
+"""文件扫描模块 - 扫描配置的数据源目录，构建对话索引"""
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import re
 import time
-import threading
 from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
 from config import Config
+from app.data_sources import DataSourceStore, FolderBinding
 
 from app.external_sources import (
     ChatSource,
@@ -61,8 +61,8 @@ class DataFileHandler(FileSystemEventHandler):
             return
         
         self.last_scan_time = current_time
-        print(f"🔄 检测到文件变化: {event.src_path}")
-        print(f"   事件类型: {event.event_type}")
+        print(f"[scanner] detected file change: {event.src_path}")
+        print(f"  event: {event.event_type}")
         
         # 清除缓存（如果有的话）
         self.scanner.clear_cache()
@@ -72,11 +72,16 @@ class ConversationScanner:
     
     def __init__(self):
         self.data_root = Config.DATA_ROOT_PATH
+        self.source_store = DataSourceStore(
+            config_file=Config.DATA_SOURCE_CONFIG_FILE,
+            base_dir=Config.BASE_DIR_PATH,
+            legacy_data_root=Config.DATA_ROOT_PATH,
+        )
         self.current_folder = None
         self._cache = {}  # 简单的缓存
         self._special_cache: Dict[str, Dict[str, Any]] = {}
         self._observer = None
-        self._start_file_watcher()
+        self._folder_bindings: Dict[str, FolderBinding] = {}
         self._file_time_cache: Dict[str, Tuple[float, Optional[float], Optional[float], float]] = {}
 
         # Fast header parse: exported ChatGPT JSON usually contains create_time/update_time near the top.
@@ -87,6 +92,64 @@ class ConversationScanner:
         # Fast scan for epoch timestamp pairs inside batchexecute_raw string.
         # Example: [1755227954,114133000]
         self._re_epoch_pair_bytes = re.compile(rb"\[(\d{9,12}),\s*(\d{1,9})\]")
+        self.reload_sources(keep_current=False)
+
+    def reload_sources(self, keep_current: bool = True) -> List[Dict[str, Any]]:
+        """Reload folder bindings from persistent data-source config."""
+        bindings = self.source_store.list_bindings()
+        self._folder_bindings = {b.id: b for b in bindings}
+
+        current_ok = keep_current and self.current_folder and self.current_folder in self._folder_bindings
+        if not current_ok:
+            self.current_folder = bindings[0].id if bindings else None
+
+        self.clear_cache()
+        self._restart_file_watcher()
+        return self.get_available_folder_entries()
+
+    def get_available_folder_entries(self) -> List[Dict[str, Any]]:
+        """Return enabled+existing folders resolved from source config."""
+        out: List[Dict[str, Any]] = []
+        for b in sorted(self._folder_bindings.values(), key=lambda x: x.name.lower()):
+            out.append(
+                {
+                    "id": b.id,
+                    "name": b.name,
+                    "kind": b.kind,
+                    "path": str(b.resolved_path),
+                    "configured_path": b.configured_path,
+                }
+            )
+        return out
+
+    def _resolve_folder_binding(self, folder_id: str) -> Optional[FolderBinding]:
+        fid = str(folder_id or "").strip()
+        if not fid:
+            return None
+        b = self._folder_bindings.get(fid)
+        if b:
+            return b
+
+        # Backward-compatible fallback: old API callers may still pass a legacy folder name
+        # under the built-in data root.
+        legacy = (self.data_root / fid).resolve()
+        if legacy.exists() and legacy.is_dir():
+            return FolderBinding(
+                id=fid,
+                name=fid,
+                kind="auto",
+                configured_path=str(legacy),
+                resolved_path=legacy,
+            )
+        return None
+
+    def get_folder_path(self, folder_id: str) -> Optional[Path]:
+        b = self._resolve_folder_binding(folder_id)
+        return b.resolved_path if b else None
+
+    def get_folder_label(self, folder_id: str) -> str:
+        b = self._resolve_folder_binding(folder_id)
+        return b.name if b else str(folder_id or "")
 
     def _iso_to_epoch_seconds(self, value: Optional[str]) -> Optional[float]:
         """Parse an ISO timestamp string to epoch seconds (UTC)."""
@@ -176,12 +239,15 @@ class ConversationScanner:
 
         return None, None
 
-    def _detect_folder_kind(self, folder_path: Path) -> str:
+    def _detect_folder_kind(self, folder_path: Path, forced_kind: str = "auto") -> str:
         """Detect the export format for a folder.
 
         Returns:
             'chatgpt' | 'claude' | 'gemini'
         """
+        k = (forced_kind or "auto").strip().lower()
+        if k in {"chatgpt", "claude", "gemini"}:
+            return k
         try:
             if detect_claude_folder(folder_path):
                 return 'claude'
@@ -192,9 +258,9 @@ class ConversationScanner:
             pass
         return 'chatgpt'
 
-    def _ensure_special_loaded(self, folder_name: str, folder_path: Path) -> Optional[Dict[str, Any]]:
+    def _ensure_special_loaded(self, folder_name: str, folder_path: Path, forced_kind: str = "auto") -> Optional[Dict[str, Any]]:
         """Load and cache special folders (Claude/Gemini)."""
-        kind = self._detect_folder_kind(folder_path)
+        kind = self._detect_folder_kind(folder_path, forced_kind=forced_kind)
         if kind == 'chatgpt':
             return None
 
@@ -470,31 +536,59 @@ class ConversationScanner:
     
     def _start_file_watcher(self):
         """启动文件监听"""
-        if not self.data_root.exists():
-            print(f"⚠️  数据目录不存在，跳过文件监听: {self.data_root}")
+        roots = sorted(
+            {str(b.resolved_path) for b in self._folder_bindings.values() if b.resolved_path.exists() and b.resolved_path.is_dir()}
+        )
+        if not roots:
+            print("[scanner] no watchable source folders, skip file watcher")
             return
-        
-        try:
-            event_handler = DataFileHandler(self)
-            self._observer = Observer()
-            self._observer.schedule(event_handler, str(self.data_root), recursive=True)
-            self._observer.start()
-            print(f"👁️  文件监听已启动: {self.data_root}")
-        except Exception as e:
-            print(f"⚠️  文件监听启动失败: {e}")
-    
+
+        event_handler = DataFileHandler(self)
+        last_error = None
+        for observer_cls in (Observer, PollingObserver):
+            obs = None
+            try:
+                obs = observer_cls()
+                for root in roots:
+                    obs.schedule(event_handler, root, recursive=True)
+                obs.start()
+                self._observer = obs
+                print(f"[scanner] file watcher started ({observer_cls.__name__}): {', '.join(roots)}")
+                return
+            except Exception as e:
+                last_error = e
+                try:
+                    if obs:
+                        obs.stop()
+                        obs.join()
+                except Exception:
+                    pass
+
+        print(f"[scanner] failed to start file watcher: {last_error}")
+        self._observer = None
+
+    def _restart_file_watcher(self):
+        self.stop_watcher()
+        self._start_file_watcher()
+
     def clear_cache(self):
         """清除缓存"""
         self._cache.clear()
         self._special_cache.clear()
-        print("🗑️  缓存已清除")
+        self._file_time_cache.clear()
+        print("[scanner] cache cleared")
     
     def stop_watcher(self):
         """停止文件监听"""
         if self._observer:
-            self._observer.stop()
-            self._observer.join()
-            print("👁️  文件监听已停止")
+            try:
+                self._observer.stop()
+                self._observer.join()
+                print("[scanner] file watcher stopped")
+            except Exception:
+                pass
+            finally:
+                self._observer = None
     
     def get_available_folders(self) -> List[str]:
         """
@@ -503,15 +597,7 @@ class ConversationScanner:
         Returns:
             文件夹名称列表
         """
-        if not self.data_root.exists():
-            return []
-        
-        folders = []
-        for item in self.data_root.iterdir():
-            if item.is_dir():
-                folders.append(item.name)
-        
-        return sorted(folders)
+        return [f["id"] for f in self.get_available_folder_entries()]
     
     def set_folder(self, folder_name: str) -> bool:
         """
@@ -523,8 +609,8 @@ class ConversationScanner:
         Returns:
             是否设置成功
         """
-        folder_path = self.data_root / folder_name
-        if folder_path.exists() and folder_path.is_dir():
+        b = self._resolve_folder_binding(folder_name)
+        if b:
             self.current_folder = folder_name
             return True
         return False
@@ -552,23 +638,34 @@ class ConversationScanner:
         result = {}
         
         # 确定要使用的文件夹
+        binding: Optional[FolderBinding] = None
         if folder_name:
-            data_dir = self.data_root / folder_name
+            binding = self._resolve_folder_binding(folder_name)
         elif self.current_folder:
-            data_dir = self.data_root / self.current_folder
+            binding = self._resolve_folder_binding(self.current_folder)
         else:
             # 如果没有指定，使用第一个可用的文件夹
-            folders = self.get_available_folders()
-            if not folders:
+            entries = self.get_available_folder_entries()
+            if not entries:
                 return result
-            data_dir = self.data_root / folders[0]
-            self.current_folder = folders[0]
-        
+            first_id = entries[0].get("id")
+            binding = self._resolve_folder_binding(str(first_id or ""))
+            self.current_folder = str(first_id or "") if first_id else None
+
+        if not binding:
+            return result
+
+        data_dir = binding.resolved_path
         if not data_dir.exists():
             return result
 
-        # Special folders: Claude export / Gemini takeout
-        special = self._ensure_special_loaded(folder_name=(folder_name or self.current_folder or ''), folder_path=data_dir)
+        # Special folders: Claude / Gemini takeout
+        folder_id = str(binding.id)
+        special = self._ensure_special_loaded(
+            folder_name=folder_id,
+            folder_path=data_dir,
+            forced_kind=binding.kind,
+        )
         if special and isinstance(special.get('listing'), dict):
             listing = special.get('listing')
             self._cache[cache_key] = listing
@@ -602,17 +699,34 @@ class ConversationScanner:
         else:
             raise FileNotFoundError("No folder selected")
 
-        folder_path = self.data_root / folder_to_use
-        if not folder_path.exists():
+        binding = self._resolve_folder_binding(folder_to_use)
+        if not binding:
             raise FileNotFoundError(f"Folder not found: {folder_to_use}")
+        folder_path = binding.resolved_path
 
-        kind = self._detect_folder_kind(folder_path)
+        kind = self._detect_folder_kind(folder_path, forced_kind=binding.kind)
         if kind != 'chatgpt':
-            special = self._ensure_special_loaded(folder_name=folder_to_use, folder_path=folder_path) or {}
+            special = self._ensure_special_loaded(
+                folder_name=binding.id,
+                folder_path=folder_path,
+                forced_kind=binding.kind,
+            ) or {}
             lookup = special.get('lookup') or {}
             src = lookup.get((category, chat_id))
             if src:
                 return src
+            # Some Gemini folders are per-conversation JSON exports (not Takeout MyActivity containers).
+            # If special-cache loading failed, fall back to file-based lookup so these exports still open.
+            if kind == 'gemini' and not special:
+                file_path = self.find_chat_file(chat_id, category, folder_to_use)
+                return ChatSource(
+                    kind='chatgpt_file',
+                    folder=folder_to_use,
+                    category=category,
+                    chat_id=chat_id,
+                    file_path=file_path,
+                    extra={"folder_path": str(folder_path), "forced_kind": "gemini"},
+                )
             raise FileNotFoundError(f"Chat not found: {chat_id} in {category}")
 
         # Default: ChatGPT per-file JSON
@@ -623,7 +737,7 @@ class ConversationScanner:
             category=category,
             chat_id=chat_id,
             file_path=file_path,
-            extra={},
+            extra={"folder_path": str(folder_path)},
         )
 
     def get_special_folder_cache(self, folder_name: str) -> Optional[Dict[str, Any]]:
@@ -631,10 +745,14 @@ class ConversationScanner:
         folder_name = (folder_name or '').strip()
         if not folder_name:
             return None
-        folder_path = self.data_root / folder_name
-        if not folder_path.exists():
+        binding = self._resolve_folder_binding(folder_name)
+        if not binding:
             return None
-        return self._ensure_special_loaded(folder_name=folder_name, folder_path=folder_path)
+        return self._ensure_special_loaded(
+            folder_name=binding.id,
+            folder_path=binding.resolved_path,
+            forced_kind=binding.kind,
+        )
     
     def _scan_recursive(self, current_path: Path, root_path: Path, result: Dict[str, List[Dict]]):
         """
@@ -827,11 +945,14 @@ class ConversationScanner:
         """
         # 确定要使用的文件夹
         if folder_name:
-            data_dir = self.data_root / folder_name
+            binding = self._resolve_folder_binding(folder_name)
         elif self.current_folder:
-            data_dir = self.data_root / self.current_folder
+            binding = self._resolve_folder_binding(self.current_folder)
         else:
             raise FileNotFoundError("No folder selected")
+        if not binding:
+            raise FileNotFoundError("Folder not found")
+        data_dir = binding.resolved_path
         
         # 确定搜索目录
         if category == '全部':

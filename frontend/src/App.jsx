@@ -1,9 +1,38 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import SearchModal from './components/SearchModal';
 import RenameModal from './components/RenameModal';
+import SettingsModal from './components/SettingsModal';
+import ConfirmDialog from './components/ConfirmDialog';
 import axios from 'axios';
+
+function normalizeFolders(rawFolders) {
+  const input = Array.isArray(rawFolders) ? rawFolders : [];
+  return input
+    .map((item, index) => {
+      if (typeof item === 'string') {
+        return {
+          id: item,
+          name: item,
+          kind: 'auto',
+          path: item,
+          order: index,
+        };
+      }
+      if (!item || typeof item !== 'object') return null;
+      const id = String(item.id || '').trim();
+      if (!id) return null;
+      return {
+        id,
+        name: String(item.name || id),
+        kind: String(item.kind || 'auto'),
+        path: String(item.path || ''),
+        order: index,
+      };
+    })
+    .filter(Boolean);
+}
 
 function App() {
   const [folders, setFolders] = useState([]);
@@ -15,35 +44,75 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [shuttingDown, setShuttingDown] = useState(false);
   const [renameState, setRenameState] = useState({ open: false, chatId: null, category: null, title: '' });
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, chatId: '', category: '' });
+  const [shutdownConfirmOpen, setShutdownConfirmOpen] = useState(false);
+  const [uiNotice, setUiNotice] = useState({ open: false, title: '', message: '' });
+  const [deletingChat, setDeletingChat] = useState(false);
   const prewarmAllOnceRef = useRef(false);
+  const folderNameById = useMemo(() => {
+    const map = new Map();
+    for (const f of folders) {
+      map.set(f.id, f.name || f.id);
+    }
+    return map;
+  }, [folders]);
+  const currentFolderLabel = folderNameById.get(currentFolder) || currentFolder || '';
 
-  // 加载文件夹列表
-  useEffect(() => {
+  const applyFoldersPayload = (payload, preferredFolderId = '') => {
+    const foldersFromApi = normalizeFolders(payload?.folders);
+    setFolders(foldersFromApi);
+
+    const firstFolderId = foldersFromApi[0]?.id || '';
+    const requested = String(preferredFolderId || '').trim();
+    const fromApiCurrent = String(payload?.current || '').trim();
+    const prevCurrent = String(currentFolder || '').trim();
+
+    const exists = (id) => Boolean(id) && foldersFromApi.some((f) => f.id === id);
+    const nextCurrent = exists(requested)
+      ? requested
+      : exists(fromApiCurrent)
+        ? fromApiCurrent
+        : exists(prevCurrent)
+          ? prevCurrent
+          : firstFolderId;
+
+    if (nextCurrent !== currentFolder) {
+      setSelectedChat(null);
+      setChatData(null);
+      setConversations({});
+    }
+    setCurrentFolder(nextCurrent || '');
+
+    if (!prewarmAllOnceRef.current && foldersFromApi.length > 1) {
+      prewarmAllOnceRef.current = true;
+      const run = () => {
+        axios.get('/api/search/prewarm', { params: { scope: 'all' } }).catch(() => {});
+      };
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 1500 });
+      } else {
+        setTimeout(run, 400);
+      }
+    }
+  };
+
+  const fetchFolders = (preferredFolderId = '') => {
     axios.get('/api/folders')
       .then(response => {
-        const foldersFromApi = Array.isArray(response?.data?.folders) ? response.data.folders : [];
-        setFolders(foldersFromApi);
-        setCurrentFolder(response?.data?.current || foldersFromApi[0] || '');
+        applyFoldersPayload(response?.data || {}, preferredFolderId);
         console.log('文件夹列表加载成功:', response.data);
-
-        // Prewarm all indexes early so the first "全部文件夹" search doesn't pay the build cost.
-        if (!prewarmAllOnceRef.current && foldersFromApi.length > 1) {
-          prewarmAllOnceRef.current = true;
-          const run = () => {
-            axios.get('/api/search/prewarm', { params: { scope: 'all' } }).catch(() => {});
-          };
-          if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-            window.requestIdleCallback(run, { timeout: 1500 });
-          } else {
-            setTimeout(run, 400);
-          }
-        }
       })
       .catch(error => {
         console.error('加载文件夹列表失败:', error);
       });
+  };
+
+  // 加载文件夹列表
+  useEffect(() => {
+    fetchFolders();
   }, []);
 
   // 当切换文件夹时，重新加载对话列表
@@ -55,7 +124,7 @@ function App() {
 
   // 加载对话列表
   const loadConversations = (folder) => {
-    axios.get(`/api/conversations?folder=${folder}`)
+    axios.get(`/api/conversations?folder=${encodeURIComponent(folder)}`)
       .then(response => {
         setConversations(response.data);
         console.log('对话列表加载成功:', response.data);
@@ -74,7 +143,7 @@ function App() {
 
   // 切换文件夹
   const handleFolderChange = (folder) => {
-    axios.post(`/api/folders/${folder}`)
+    axios.post(`/api/folders/${encodeURIComponent(folder)}`)
       .then(() => {
         setCurrentFolder(folder);
         setSelectedChat(null);
@@ -91,7 +160,7 @@ function App() {
     setSelectedChat(chatId);
 
     const folderParam = folderOverride || currentFolder;
-    axios.get(`/api/chat/${chatId}?category=${category}&folder=${folderParam}`)
+    axios.get(`/api/chat/${encodeURIComponent(chatId)}?category=${encodeURIComponent(category)}&folder=${encodeURIComponent(folderParam)}`)
       .then(response => {
         setChatData(response.data);
         setLoading(false);
@@ -103,23 +172,34 @@ function App() {
       });
   };
 
-  const deleteChat = async (chatId, category) => {
+  const requestDeleteChat = (chatId, category) => {
     if (!chatId || !category) return;
+    setDeleteConfirm({ open: true, chatId, category });
+  };
 
-    const ok = window.confirm('确定要删除这条对话记录吗？（不可恢复）');
-    if (!ok) return;
-
+  const confirmDeleteChat = async () => {
+    if (!deleteConfirm?.chatId || !deleteConfirm?.category) return;
+    setDeletingChat(true);
     try {
       const folderParam = currentFolder;
-      await axios.delete(`/api/chat/${chatId}?category=${encodeURIComponent(category)}&folder=${encodeURIComponent(folderParam)}`);
-      if (selectedChat === chatId) {
+      await axios.delete(
+        `/api/chat/${encodeURIComponent(deleteConfirm.chatId)}?category=${encodeURIComponent(deleteConfirm.category)}&folder=${encodeURIComponent(folderParam)}`
+      );
+      if (selectedChat === deleteConfirm.chatId) {
         setSelectedChat(null);
         setChatData(null);
       }
+      setDeleteConfirm({ open: false, chatId: '', category: '' });
       loadConversations(folderParam);
     } catch (e) {
       console.error('删除对话失败:', e);
-      window.alert(`删除失败：${e?.response?.data?.error || e?.message || 'unknown error'}`);
+      setUiNotice({
+        open: true,
+        title: '删除失败',
+        message: e?.response?.data?.error || e?.message || 'unknown error',
+      });
+    } finally {
+      setDeletingChat(false);
     }
   };
 
@@ -137,7 +217,7 @@ function App() {
     let res;
     try {
       res = await axios.patch(
-        `/api/chat/${chatId}?category=${encodeURIComponent(category)}&folder=${encodeURIComponent(folderParam)}`,
+        `/api/chat/${encodeURIComponent(chatId)}?category=${encodeURIComponent(category)}&folder=${encodeURIComponent(folderParam)}`,
         { title: newTitle }
       );
     } catch (e) {
@@ -170,8 +250,11 @@ function App() {
   }, []);
 
   const handleShutdown = () => {
-    const ok = window.confirm('确定要退出并停止服务吗？');
-    if (!ok) return;
+    setShutdownConfirmOpen(true);
+  };
+
+  const confirmShutdown = () => {
+    setShutdownConfirmOpen(false);
     setShuttingDown(true);
     axios.post('/api/shutdown')
       .then(() => {
@@ -188,6 +271,11 @@ function App() {
       .catch((error) => {
         console.error('关闭服务失败:', error);
         setShuttingDown(false);
+        setUiNotice({
+          open: true,
+          title: '退出失败',
+          message: error?.response?.data?.error || error?.message || 'unknown error',
+        });
       });
   };
 
@@ -202,10 +290,11 @@ function App() {
         onCategoryChange={setSelectedCategory}
         selectedChat={selectedChat}
         onChatSelect={(chatId) => loadChat(chatId, selectedCategory)}
-        onChatDelete={(chatId, category) => deleteChat(chatId, category)}
+        onChatDelete={(chatId, category) => requestDeleteChat(chatId, category)}
         onChatRename={(chatId, category, currentTitle) => openRename(chatId, category, currentTitle)}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       <ChatView
         chatData={chatData}
@@ -218,13 +307,14 @@ function App() {
       <SearchModal
         open={searchOpen}
         folder={currentFolder}
+        folderLabel={currentFolderLabel}
         onClose={() => setSearchOpen(false)}
         onSelect={async (r) => {
           if (!r?.id || !r?.category) return;
           const targetFolder = r.folder || currentFolder;
           if (targetFolder && targetFolder !== currentFolder) {
             try {
-              await axios.post(`/api/folders/${targetFolder}`);
+              await axios.post(`/api/folders/${encodeURIComponent(targetFolder)}`);
               setCurrentFolder(targetFolder);
             } catch (e) {
               console.error('切换文件夹失败:', e);
@@ -240,6 +330,53 @@ function App() {
         initialTitle={renameState?.title || ''}
         onClose={() => setRenameState({ open: false, chatId: null, category: null, title: '' })}
         onSubmit={submitRename}
+      />
+
+      <SettingsModal
+        open={settingsOpen}
+        currentFolder={currentFolder}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={(data) => {
+          applyFoldersPayload(data || {}, data?.current || currentFolder);
+          if (!data?.keep_open) {
+            setSettingsOpen(false);
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteConfirm?.open)}
+        title="删除对话？"
+        message="删除后不可恢复，将从磁盘中移除这条聊天记录。"
+        confirmLabel="删除"
+        cancelLabel="取消"
+        danger
+        busy={deletingChat}
+        onCancel={() => setDeleteConfirm({ open: false, chatId: '', category: '' })}
+        onConfirm={confirmDeleteChat}
+      />
+
+      <ConfirmDialog
+        open={shutdownConfirmOpen}
+        title="停止服务并退出？"
+        message="这会停止后端与前端服务。下次使用需要重新启动。"
+        confirmLabel="退出"
+        cancelLabel="取消"
+        danger
+        busy={shuttingDown}
+        onCancel={() => setShutdownConfirmOpen(false)}
+        onConfirm={confirmShutdown}
+      />
+
+      <ConfirmDialog
+        open={Boolean(uiNotice?.open)}
+        title={uiNotice?.title || '提示'}
+        message={uiNotice?.message || ''}
+        confirmLabel="知道了"
+        cancelLabel=""
+        busy={false}
+        onCancel={() => setUiNotice({ open: false, title: '', message: '' })}
+        onConfirm={() => setUiNotice({ open: false, title: '', message: '' })}
       />
     </div>
   );

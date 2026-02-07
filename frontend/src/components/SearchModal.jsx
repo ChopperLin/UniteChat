@@ -99,6 +99,7 @@ function ellipsizeMiddle(text, maxLen = 24) {
 export default function SearchModal({
   open,
   folder,
+  folderLabel,
   onClose,
   onSelect,
 }) {
@@ -439,7 +440,7 @@ export default function SearchModal({
               }}
               title={scopeAll ? '点击切换到当前文件夹' : '点击切换到全部文件夹'}
             >
-              {scopeAll ? '全部文件夹' : (folder || '-')}
+              {scopeAll ? '全部文件夹' : (folderLabel || folder || '-')}
             </button>
           </span>
           {Number.isFinite(elapsedSec) && (
@@ -642,7 +643,7 @@ export default function SearchModal({
 
           {results.map((r, i) => {
             const active = i === activeIndex;
-            const folderLabel = r.folder || folder || '-';
+            const folderTag = r.folder_label || r.folder || folderLabel || folder || '-';
             const categoryLabel = r.category || '-';
             return (
               <div
@@ -698,9 +699,9 @@ export default function SearchModal({
                         textOverflow: 'ellipsis',
                         transition: 'all 0.12s'
                       }}
-                      title={folderLabel}
+                      title={folderTag}
                     >
-                      {ellipsizeMiddle(folderLabel, 28)}
+                      {ellipsizeMiddle(folderTag, 28)}
                     </div>
                     <div
                       style={{

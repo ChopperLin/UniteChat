@@ -78,6 +78,25 @@ function TrashIcon({ color = '#8B2E1F' }) {
   );
 }
 
+function CogIcon({ color = '#6B615B' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 2.2L8.7 3.7L10.4 3.9L10.7 5.6L12.2 6.3L11.5 7.8L12.2 9.3L10.7 10L10.4 11.7L8.7 11.9L8 13.4L7.3 11.9L5.6 11.7L5.3 10L3.8 9.3L4.5 7.8L3.8 6.3L5.3 5.6L5.6 3.9L7.3 3.7L8 2.2Z" stroke={color} strokeWidth="1.15" strokeLinejoin="round" />
+      <circle cx="8" cy="7.8" r="1.9" stroke={color} strokeWidth="1.15" />
+    </svg>
+  );
+}
+
+function WorkspaceIcon({ color = '#5A504A' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="2" y="2.2" width="12" height="11.6" rx="2.1" stroke={color} strokeWidth="1.2" />
+      <path d="M2.4 6.2H13.6" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M5.2 4.2H6.8" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function Sidebar({ 
   folders, 
   currentFolder, 
@@ -90,15 +109,25 @@ function Sidebar({
   onChatDelete,
   onChatRename,
   collapsed,
-  onToggleCollapse
+  onToggleCollapse,
+  onOpenSettings
 }) {
   const [categoryExpanded, setCategoryExpanded] = useState({});
   const [folderDropdownOpen, setFolderDropdownOpen] = useState(false);
   const [chatMenuOpen, setChatMenuOpen] = useState(null); // {category, id} | null
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const dropdownRef = useRef(null);
   const chatMenuRef = useRef(null);
-  const safeFolders = Array.isArray(folders) ? folders : [];
+  const profileMenuRef = useRef(null);
+  const safeFolders = Array.isArray(folders) ? folders.map((f) => {
+    if (typeof f === 'string') {
+      return { id: f, name: f, kind: 'auto', path: f };
+    }
+    return f;
+  }).filter(Boolean) : [];
   const safeConversations = conversations && typeof conversations === 'object' ? conversations : {};
+  const currentFolderObj = safeFolders.find((f) => f.id === currentFolder);
+  const currentFolderLabel = currentFolderObj?.name || currentFolder || '';
   const categories = Object.keys(safeConversations);
 
   const toggleCategory = (category, currentExpanded) => {
@@ -144,6 +173,23 @@ function Sidebar({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [chatMenuOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!profileMenuOpen) return;
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    if (profileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [profileMenuOpen]);
 
   return (
     <div style={{
@@ -269,7 +315,7 @@ function Sidebar({
                   e.currentTarget.style.background = '#FDFBF9';
                 }
               }}
-              title={currentFolder}
+              title={currentFolderLabel}
             >
               <span style={{ fontSize: '16px', color: '#8A7F76', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                 <FolderIcon />
@@ -282,7 +328,7 @@ function Sidebar({
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap'
               }}>
-                {ellipsizeMiddle(currentFolder, 24)}
+                {ellipsizeMiddle(currentFolderLabel, 24)}
               </span>
 
               <span style={{ flexShrink: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
@@ -307,9 +353,9 @@ function Sidebar({
               }}>
                 {safeFolders.map((folder, index) => (
                   <div
-                    key={folder}
+                    key={folder.id}
                     onClick={() => {
-                      onFolderChange(folder);
+                      onFolderChange(folder.id);
                       setFolderDropdownOpen(false);
                     }}
                     style={{
@@ -317,8 +363,8 @@ function Sidebar({
                       cursor: 'pointer',
                       fontSize: '13.5px',
                       color: '#2A2523',
-                      background: currentFolder === folder ? '#F2EDE7' : 'transparent',
-                      fontWeight: currentFolder === folder ? '600' : '400',
+                      background: currentFolder === folder.id ? '#F2EDE7' : 'transparent',
+                      fontWeight: currentFolder === folder.id ? '600' : '400',
                       transition: 'background-color 0.06s',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -326,14 +372,14 @@ function Sidebar({
                       borderBottom: index === safeFolders.length - 1 ? 'none' : '1px solid #F2EDE7'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = currentFolder === folder ? '#E8E3DB' : '#F7F5F2';
+                      e.currentTarget.style.background = currentFolder === folder.id ? '#E8E3DB' : '#F7F5F2';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = currentFolder === folder ? '#F2EDE7' : 'transparent';
+                      e.currentTarget.style.background = currentFolder === folder.id ? '#F2EDE7' : 'transparent';
                     }}
-                    title={folder}
-                  >
-                    {folder}
+                      title={folder.path || folder.name || folder.id}
+                    >
+                    {folder.name || folder.id}
                   </div>
                 ))}
               </div>
@@ -581,6 +627,113 @@ function Sidebar({
           })}
         </div>
       )}
+
+      <div
+        ref={profileMenuRef}
+        style={{
+          position: 'relative',
+          borderTop: '1px solid #E5E0DB',
+          padding: collapsed ? '10px 8px' : '10px',
+          background: '#F8F5F1'
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setProfileMenuOpen((v) => !v)}
+          style={{
+            width: '100%',
+            border: '1px solid #DDD5CB',
+            background: '#FFFFFF',
+            borderRadius: '11px',
+            cursor: 'pointer',
+            minHeight: '40px',
+            padding: collapsed ? '0' : '8px 10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: collapsed ? 'center' : 'space-between',
+            color: '#2A2523',
+            fontSize: '13.5px',
+            fontWeight: 600,
+            gap: '8px'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#F7F3EE';
+            e.currentTarget.style.borderColor = '#CEC3B6';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#FFFFFF';
+            e.currentTarget.style.borderColor = '#DDD5CB';
+          }}
+          title="工作区菜单"
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <WorkspaceIcon />
+            {!collapsed && (
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                本地工作区
+              </span>
+            )}
+          </span>
+          {!collapsed && <ChevronIcon direction={profileMenuOpen ? 'up' : 'down'} size={10} color="#8A7F76" />}
+        </button>
+
+        {profileMenuOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              left: collapsed ? 'calc(100% + 6px)' : '10px',
+              right: collapsed ? 'auto' : '10px',
+              bottom: 'calc(100% + 6px)',
+              minWidth: collapsed ? '170px' : 'auto',
+              background: '#FFFFFF',
+              border: '1px solid #E5E0DB',
+              borderRadius: '12px',
+              boxShadow: '0 10px 30px rgba(42, 37, 35, 0.12)',
+              padding: '8px',
+              zIndex: 1200,
+              transformOrigin: collapsed ? 'left bottom' : 'center bottom',
+              animation: 'popInSoft 0.18s cubic-bezier(0.22, 1, 0.36, 1)'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof onOpenSettings === 'function') onOpenSettings();
+                setProfileMenuOpen(false);
+              }}
+              style={{
+                width: '100%',
+                border: '1px solid #E9E3DC',
+                cursor: 'pointer',
+                padding: '9px 11px',
+                borderRadius: '10px',
+                background: '#FFFFFF',
+                color: '#2A2523',
+                fontWeight: '560',
+                fontSize: '13.5px',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#F7F3EE';
+                e.currentTarget.style.borderColor = '#DDD3C8';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#FFFFFF';
+                e.currentTarget.style.borderColor = '#E9E3DC';
+              }}
+              title="设置"
+            >
+              <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CogIcon />
+              </span>
+              <span>Settings</span>
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

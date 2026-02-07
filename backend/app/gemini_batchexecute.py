@@ -292,7 +292,7 @@ def _normalize_math_delimiters(md: str) -> str:
     def _normalize_math_body_escapes(body: str) -> str:
         """Normalize over-escaped LaTeX bodies inside $...$ / $$...$$.
 
-        Gemini exports sometimes double-escape TeX commands, e.g.:
+        Geminis sometimes double-escape TeX commands, e.g.:
           \\alpha, T\\_0
         which KaTeX renders as plain text/newline control instead of symbols/subscripts.
         """

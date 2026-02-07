@@ -1,7 +1,7 @@
 """External export formats (Claude / Gemini) loaders.
 
 This project originally supported ChatGPT exported JSON files (one conversation per JSON).
-Claude and Gemini exports use very different structures:
+Claude and Geminis use very different structures:
 - Claude: a single large conversations.json containing many conversations.
 - Gemini (Google Takeout): MyActivity.html (or MyActivity.json) under Takeout/.../Gemini Apps/.
 
@@ -338,7 +338,8 @@ def load_claude_export(folder_name: str, folder_path: Path) -> ClaudeExportCache
     memories_path = folder_path / "memories.json"
     if memories_path.exists() and memories_path.is_file():
         try:
-            mem_data = json.load(open(memories_path, "r", encoding="utf-8"))
+            with open(memories_path, "r", encoding="utf-8") as f:
+                mem_data = json.load(f)
             if isinstance(mem_data, list) and mem_data:
                 pm = mem_data[0].get("project_memories")
                 if isinstance(pm, dict):
@@ -351,7 +352,8 @@ def load_claude_export(folder_name: str, folder_path: Path) -> ClaudeExportCache
     projects_path = folder_path / "projects.json"
     if projects_path.exists() and projects_path.is_file():
         try:
-            proj_data = json.load(open(projects_path, "r", encoding="utf-8"))
+            with open(projects_path, "r", encoding="utf-8") as f:
+                proj_data = json.load(f)
             if isinstance(proj_data, list):
                 for item in proj_data:
                     if not isinstance(item, dict):

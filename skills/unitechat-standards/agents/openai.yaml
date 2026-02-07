@@ -1,4 +1,4 @@
 interface:
   display_name: "UniteChat Standards"
-  short_description: "Enforce frontend design language and backend code standards"
-  default_prompt: "Apply UniteChat standards before coding: keep UI minimal and consistent, keep Python logic explicit and stable, and validate touched scope."
+  short_description: "Enforce minimal UI and stable backend standards"
+  default_prompt: "Apply UniteChat standards before coding: default to minimal UI (single-root data-source flow, one primary action, auto-run after explicit selection, no Add Source/Advanced clutter), keep Python logic explicit and stable, and validate touched scope."

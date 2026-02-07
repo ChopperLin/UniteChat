@@ -9,7 +9,7 @@ Frontend expects:
 
 ChatGPT export already matches via ConversationParser.
 This module adds normalization for:
-- Claude export (conversations.json)
+- Claude (conversations.json)
 - Gemini Takeout activity (MyActivity.html)
 """
 
@@ -101,7 +101,7 @@ def normalize_claude_conversation(
     def _materialize_text_citations(md: str, citations: Any) -> str:
         """Insert Claude-export citations into markdown as clickable citation pills.
 
-        Claude exports store web citations separately from the text block, typically under:
+        Claudes store web citations separately from the text block, typically under:
           content[i].citations[j] = {start_index, end_index, details:{url,...}}
         Without materialization, the frontend has no way to display them.
         """
@@ -304,7 +304,7 @@ def normalize_claude_conversation(
             role = "user" if sender in {"human", "user"} else "assistant"
             msg_ts = _safe_epoch(_iso_to_epoch_seconds(msg.get("created_at")) or _iso_to_epoch_seconds(msg.get("updated_at")))
 
-            # Claude exports often include a simplified msg.text plus a richer msg.content list.
+            # Claudes often include a simplified msg.text plus a richer msg.content list.
             text_fallback = msg.get("text") if isinstance(msg.get("text"), str) else ""
 
             def _find_string_payload(obj: Any) -> str:
@@ -558,7 +558,7 @@ def normalize_claude_conversation(
 
     meta = {
         "source": "claude",
-        # Claude export doesn't reliably include model per conversation.
+        # Claude doesn't reliably include model per conversation.
         "model_slug": (
             (conv_raw.get("model") or conv_raw.get("model_slug") or "").strip()
             if isinstance(conv_raw.get("model") or conv_raw.get("model_slug"), str)

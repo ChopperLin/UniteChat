@@ -243,6 +243,17 @@ class ConversationSearcher:
                     pass
             self._search_cache.clear()
 
+    def wait_for_idle(self, timeout_sec: float = 5.0) -> bool:
+        """Wait until there is no in-flight background index build."""
+        deadline = time.time() + max(0.0, float(timeout_sec or 0.0))
+        while True:
+            with self._lock:
+                if not self._building:
+                    return True
+            if time.time() >= deadline:
+                return False
+            time.sleep(0.05)
+
     def schedule_build(self, folder: str, folder_path: Path) -> None:
         """后台预热构建索引，不阻塞接口返回。"""
         folder = (folder or "").strip()

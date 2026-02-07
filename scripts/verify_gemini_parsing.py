@@ -1,4 +1,4 @@
-"""Quick regression check for Gemini export parsing.
+"""Quick regression check for Gemini parsing.
 
 Runs a couple of known-good samples (normal chat + Deep Research) through the
 batchexecute parser and asserts a few invariants that the frontend depends on.

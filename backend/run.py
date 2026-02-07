@@ -22,17 +22,17 @@ def _get_host_port() -> tuple[str, int]:
 if __name__ == '__main__':
     host, port = _get_host_port()
 
-    print("🚀 启动 UniteChat 后端...")
-    print("🐍 Python:", sys.executable)
-    print("🐍 Version:", sys.version.split()[0])
-    print("📂 数据根目录:", Config.DATA_ROOT_PATH)
-    print(f"🌐 访问地址: http://{host}:{port}")
+    print("Starting UniteChat backend...")
+    print("Python:", sys.executable)
+    print("Version:", sys.version.split()[0])
+    print("Data root:", Config.DATA_ROOT_PATH)
+    print(f"URL: http://{host}:{port}")
     print("")
 
     try:
         app.run(host=host, port=port, debug=True, use_reloader=False)
     except OSError as e:
-        print("\n❌ 后端启动失败: 监听端口失败")
+        print("\nBackend start failed: cannot bind port")
         print(f"   host={host} port={port}")
         print(f"   OSError: {e}")
         print("\n可尝试：")

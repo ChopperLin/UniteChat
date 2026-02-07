@@ -5,6 +5,7 @@
 ##  核心特性
 
 -  **智能组织**：自动扫描并按文件夹和分类组织对话记录
+-  **数据源配置**：在前端 `Settings -> Data Sources` 中配置任意目录路径（支持通配符）并指定解析类型（ChatGPT / Claude / Gemini / Auto）
 -  **富文本渲染**：完整支持 Markdown、LaTeX 数学公式、代码语法高亮
 -  **引用系统**：解析并美化 ChatGPT 导出中的引用标记，点击查看引用卡片并左右切换
 -  **便捷浏览**：清晰的对话树结构，轻松回溯完整上下文
@@ -89,7 +90,7 @@ npm install
 
 ### 二、准备数据
 
-将 ChatGPT 导出的对话数据放入 `data/` 目录：
+你可以直接将导出数据放入 `data/`（首次启动会自动迁移为默认数据源），也可以在前端设置页里配置任意路径：
 
 ```
 data/
@@ -100,6 +101,10 @@ data/
      CS/
      GameDev/
 ```
+
+也支持在 Settings 里配置类似：
+- `D:/Exports/chatgpt_work`
+- `D:/Exports/claude/*`（通配符匹配多个目录）
 
 ### 三、启动应用
 
@@ -149,7 +154,11 @@ npm run dev
 
 ### 数据结构
 
-后端扫描路径：`data/<folder>/<category>/*.json`
+后端按“数据源配置”扫描路径，每个数据源可单独指定类型：
+- `auto`：自动检测
+- `chatgpt`：按 ChatGPT JSON 解析
+- `claude`：按 Claude 解析
+- `gemini`：按 Gemini 解析
 
 - **folder**：ChatGPT 导出目录（如 `chatgpt_team_chat_1231`）
 - **category**：分类文件夹（如 `AI`、`CS`、`GameDev`）
@@ -179,6 +188,8 @@ ChatGPT 导出中的引用标记有多种形式：
 ```
 GET  /api/health              # 健康检查
 GET  /api/folders             # 获取所有文件夹列表
+GET  /api/settings/sources    # 获取数据源设置
+PUT  /api/settings/sources    # 更新数据源设置
 GET  /api/conversations       # 获取指定文件夹下的对话列表
 GET  /api/conversation/<id>   # 获取单个对话详情
 ```
