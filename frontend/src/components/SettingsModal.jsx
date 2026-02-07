@@ -65,6 +65,19 @@ function splitPathParts(rawPath) {
   return normalized.split('/').filter(Boolean);
 }
 
+function hasGlobMagic(rawPath) {
+  return /[*?\[\]]/.test(String(rawPath || ''));
+}
+
+function getPathBasename(rawPath) {
+  const text = String(rawPath || '').trim();
+  if (!text) return '';
+  const normalized = text.replace(/[\\/]+/g, '/').replace(/\/+$/g, '');
+  if (!normalized) return '';
+  const parts = normalized.split('/').filter(Boolean);
+  return String(parts[parts.length - 1] || '').trim();
+}
+
 function inferRootFromSources(rows) {
   const paths = (Array.isArray(rows) ? rows : [])
     .map((r) => String(r?.resolved_path || '').trim())
@@ -121,6 +134,7 @@ export default function SettingsModal({ open, onClose, currentFolder, onSaved })
   const latestSizeRef = useRef(modalSize);
   const suppressBackdropCloseUntilRef = useRef(0);
   const backdropPressedRef = useRef(false);
+  const baselineSourcesRef = useRef([]);
 
   const canSave = useMemo(
     () => !saving && !loading && !importingRoot && !pickingRoot && !rowActionBusy,
@@ -140,6 +154,7 @@ export default function SettingsModal({ open, onClose, currentFolder, onSaved })
 
   useEffect(() => {
     if (!open) return;
+    baselineSourcesRef.current = [];
     setActiveTab('sources');
     setLoading(true);
     setError('');
@@ -165,6 +180,7 @@ export default function SettingsModal({ open, onClose, currentFolder, onSaved })
         const data = res?.data || {};
         const normalized = normalizeSources(data?.sources);
         setSources(normalized);
+        baselineSourcesRef.current = normalized;
         const root = String(data?.root || '').trim() || inferRootFromSources(normalized);
         if (root) setRootImportPath(root);
       })
@@ -240,7 +256,9 @@ export default function SettingsModal({ open, onClose, currentFolder, onSaved })
         { delete_dir: true }
       );
       const data = res?.data || {};
-      setSources(normalizeSources(data.sources));
+      const normalized = normalizeSources(data.sources);
+      setSources(normalized);
+      baselineSourcesRef.current = normalized;
       const nextRoot = String(data?.root || '').trim() || inferRootFromSources(data?.sources);
       if (nextRoot) setRootImportPath(nextRoot);
       setInfo(`目录已删除：${src.name || src.id}`);
@@ -271,6 +289,7 @@ export default function SettingsModal({ open, onClose, currentFolder, onSaved })
       const detected = data?.detected || {};
       const normalized = normalizeSources(data.sources);
       setSources(normalized);
+      baselineSourcesRef.current = normalized;
       const nextRoot = String(data?.root || '').trim() || inferRootFromSources(normalized) || root;
       if (nextRoot) setRootImportPath(nextRoot);
       setInfo(
@@ -300,34 +319,92 @@ export default function SettingsModal({ open, onClose, currentFolder, onSaved })
   };
 
   const handleSave = async () => {
-    const payloadSources = sources.map((s) => ({
-      id: String(s.id || '').trim() || undefined,
-      name: String(s.name || '').trim(),
-      path: String(s.path || '').trim(),
-      kind: String(s.kind || 'auto').trim().toLowerCase() || 'auto',
-      enabled: Boolean(s.enabled),
-    }));
-
-    const validCount = payloadSources.filter((s) => s.path).length;
-    if (validCount === 0) {
-      setError('至少需要一个有效目录路径。');
-      return;
-    }
-
     setSaving(true);
     setError('');
     setInfo('');
     try {
+      const baselineById = new Map(
+        (baselineSourcesRef.current || [])
+          .filter((s) => String(s?.id || '').trim())
+          .map((s) => [String(s.id || '').trim(), s])
+      );
+
+      const desiredById = new Map(
+        (sources || [])
+          .filter((s) => String(s?.id || '').trim())
+          .map((s) => [
+            String(s.id || '').trim(),
+            {
+              name: String(s.name || '').trim(),
+              kind: String(s.kind || 'auto').trim().toLowerCase() || 'auto',
+              enabled: Boolean(s.enabled),
+            },
+          ])
+      );
+
+      const renameCandidates = [];
+      for (const src of (sources || [])) {
+        const id = String(src?.id || '').trim();
+        if (!id) continue;
+        const newName = String(src?.name || '').trim();
+        if (!newName) continue;
+
+        const before = baselineById.get(id);
+        const pathText = String(src?.path || before?.path || '').trim();
+        if (!pathText || hasGlobMagic(pathText)) continue;
+        const baseName = getPathBasename(pathText);
+        if (!baseName || newName === baseName) continue;
+
+        renameCandidates.push({ id, name: newName });
+      }
+
+      let renamedCount = 0;
+      for (const item of renameCandidates) {
+        await axios.post(`/api/settings/sources/${encodeURIComponent(item.id)}/rename`, {
+          name: item.name,
+        });
+        renamedCount += 1;
+      }
+
+      const latest = await axios.get('/api/settings/sources');
+      const latestData = latest?.data || {};
+      const latestSources = normalizeSources(latestData?.sources);
+      const mergedSources = latestSources.map((s) => {
+        const desired = desiredById.get(String(s.id || '').trim());
+        if (!desired) return s;
+        return {
+          ...s,
+          name: desired.name || s.name,
+          kind: desired.kind || s.kind || 'auto',
+          enabled: desired.enabled,
+        };
+      });
+
+      const payloadSources = mergedSources.map((s) => ({
+        id: String(s.id || '').trim() || undefined,
+        name: String(s.name || '').trim(),
+        path: String(s.path || '').trim(),
+        kind: String(s.kind || 'auto').trim().toLowerCase() || 'auto',
+        enabled: Boolean(s.enabled),
+      }));
+      const validCount = payloadSources.filter((s) => s.path).length;
+      if (validCount === 0) {
+        setError('至少需要一个有效目录路径。');
+        return;
+      }
+
       const res = await axios.put('/api/settings/sources', {
         sources: payloadSources,
         current: currentFolder || '',
       });
       const data = res?.data || {};
       const normalized = normalizeSources(data.sources || sources);
+      setSources(normalized);
+      baselineSourcesRef.current = normalized;
       const nextRoot = String(data?.root || '').trim() || inferRootFromSources(normalized);
       if (nextRoot) setRootImportPath(nextRoot);
       onSaved?.({ ...data, keep_open: false });
-      setInfo('保存成功');
+      setInfo(renamedCount > 0 ? `保存成功，已重命名 ${renamedCount} 个目录` : '保存成功');
     } catch (e) {
       setError(e?.response?.data?.error || e?.message || '保存失败');
     } finally {

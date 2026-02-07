@@ -166,14 +166,72 @@ def get_data_sources_settings():
 @api.route('/settings/sources', methods=['PUT'])
 def update_data_sources_settings():
     """更新数据源设置。"""
+    needs_reload = False
     try:
         payload = request.get_json(silent=True) or {}
         incoming_sources = payload.get('sources')
         if not isinstance(incoming_sources, list):
             return jsonify({'error': 'sources must be a list'}), 400
 
-        scanner.source_store.update_from_payload(incoming_sources)
+        existing_by_id = {
+            str(s.id): s
+            for s in scanner.source_store.load_sources()
+            if getattr(s, 'id', None)
+        }
+        rename_plan = []
+        seen_ids = set()
+        for item in incoming_sources:
+            if not isinstance(item, dict):
+                continue
+            sid = str(item.get('id') or '').strip()
+            if not sid or sid in seen_ids:
+                continue
+            src = existing_by_id.get(sid)
+            if not src:
+                continue
+            desired_name = str(item.get('name') or '').strip()
+            if not desired_name:
+                continue
+            if scanner.source_store.has_glob_magic(src.path):
+                continue
+            try:
+                current_base = scanner.source_store.resolve_path(src.path).name.strip()
+            except Exception:
+                current_base = ''
+            if current_base and current_base != desired_name:
+                rename_plan.append((sid, desired_name))
+                seen_ids.add(sid)
+
+        if rename_plan:
+            scanner.stop_watcher()
+            needs_reload = True
+            scanner.clear_cache()
+            searcher.invalidate_all()
+            searcher.wait_for_idle(timeout_sec=3.0)
+            for sid, desired_name in rename_plan:
+                scanner.source_store.rename_source_folder(source_id=sid, new_name=desired_name)
+
+        latest_by_id = {
+            str(s.id): s
+            for s in scanner.source_store.load_sources()
+            if getattr(s, 'id', None)
+        }
+        merged_sources = []
+        for item in incoming_sources:
+            if not isinstance(item, dict):
+                continue
+            row = dict(item)
+            sid = str(row.get('id') or '').strip()
+            src = latest_by_id.get(sid)
+            if src:
+                row['path'] = src.path
+                if not str(row.get('name') or '').strip():
+                    row['name'] = src.name
+            merged_sources.append(row)
+
+        scanner.source_store.update_from_payload(merged_sources)
         folders = scanner.reload_sources(keep_current=True)
+        needs_reload = False
         searcher.invalidate_all()
 
         requested_current = str(payload.get('current') or '').strip()
@@ -187,8 +245,18 @@ def update_data_sources_settings():
                 current = scanner.current_folder
 
         return jsonify(_settings_payload(success=True, current=current or ''))
+    except (ValueError, FileExistsError) as e:
+        return jsonify({'error': str(e)}), 400
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    finally:
+        if needs_reload:
+            try:
+                scanner.reload_sources(keep_current=True)
+            except Exception:
+                pass
 
 
 @api.route('/settings/sources/import', methods=['POST'])
