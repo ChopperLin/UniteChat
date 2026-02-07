@@ -1,0 +1,155 @@
+.thinking-block {
+  border-radius: 12px;
+  border: 1px solid #e2dbd1;
+  background: #faf7f2;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.thinking-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+  cursor: pointer;
+  color: #4f4741;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.thinking-toggle:hover {
+  background: #f2ece4;
+  color: #37312d;
+}
+
+.thinking-toggle-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thinking-icon {
+  font-size: 14px;
+  opacity: 0.72;
+}
+
+.thinking-label {
+  font-size: 14px;
+  font-weight: 540;
+}
+
+.thinking-preview-inline {
+  font-size: 13px;
+  color: #71675e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thinking-toggle-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.thinking-duration {
+  font-size: 12px;
+  color: #756c63;
+}
+
+.thinking-chevron {
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.72;
+  transition: transform 0.18s ease;
+}
+
+.thinking-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.thinking-body {
+  border-top: 1px solid #e2dbd1;
+  padding: 10px 14px 12px 20px;
+  position: relative;
+}
+
+.thinking-body::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 10px;
+  bottom: 12px;
+  width: 1px;
+  background: #d8d0c6;
+}
+
+.thinking-recap,
+.thinking-step,
+.thinking-tip {
+  margin-left: 12px;
+}
+
+.thinking-recap {
+  color: #4a433d;
+  font-size: 15px;
+  line-height: 1.58;
+  white-space: pre-wrap;
+  margin-bottom: 10px;
+}
+
+.thinking-tip {
+  font-size: 12.5px;
+  color: #7a7068;
+  line-height: 1.58;
+  margin-bottom: 10px;
+}
+
+.thinking-step {
+  margin-bottom: 10px;
+}
+
+.thinking-step-title {
+  font-size: 13.5px;
+  color: #5f554d;
+  font-weight: 540;
+  margin-bottom: 3px;
+}
+
+.thinking-step-content {
+  font-size: 13.5px;
+  color: #5d544d;
+  line-height: 1.62;
+  white-space: pre-wrap;
+}
+
+.thinking-more {
+  margin-left: 12px;
+  border: 0;
+  background: transparent;
+  color: #6f655d;
+  font-size: 14px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.thinking-more:hover {
+  color: #423a35;
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .thinking-recap {
+    font-size: 14px;
+  }
+
+  .thinking-step-title,
+  .thinking-step-content {
+    font-size: 13px;
+  }
+}

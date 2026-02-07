@@ -80,6 +80,24 @@ def normalize_claude_conversation(
             return parts[-2]
         return host
 
+    def _normalize_web_search_result_item(item: Any) -> Optional[Dict[str, str]]:
+        if not isinstance(item, dict):
+            return None
+
+        url = item.get("url")
+        if not (isinstance(url, str) and url.strip()):
+            return None
+        url = url.strip()
+
+        title = item.get("title")
+        if not (isinstance(title, str) and title.strip()):
+            title = url
+        else:
+            title = title.strip()
+
+        host = _domain_label(url)
+        return {"url": url, "title": title, "host": host}
+
     def _materialize_text_citations(md: str, citations: Any) -> str:
         """Insert Claude-export citations into markdown as clickable citation pills.
 
@@ -294,6 +312,8 @@ def normalize_claude_conversation(
 
             thinking_steps: List[Dict[str, Any]] = []
             thinking_summaries: List[str] = []
+            web_searches: List[Dict[str, Any]] = []
+            pending_web_search_queries: List[str] = []
 
             def _find_string_payload(obj: Any) -> str:
                 if isinstance(obj, str):
@@ -343,6 +363,43 @@ def normalize_claude_conversation(
                         if isinstance(t, str) and t.strip():
                             parts.append(_materialize_text_citations(t, part.get("citations")))
                     elif p_type in {"tool_result", "tool_use"}:
+                        tool_name = str(part.get("name") or "").strip().lower()
+
+                        # Capture Claude "Search the web" activity for frontend timeline rendering.
+                        if p_type == "tool_use" and tool_name == "web_search":
+                            query = ""
+                            inp = part.get("input")
+                            if isinstance(inp, dict):
+                                q = inp.get("query")
+                                if isinstance(q, str) and q.strip():
+                                    query = q.strip()
+                            pending_web_search_queries.append(query)
+
+                        if p_type == "tool_result" and tool_name == "web_search":
+                            query = pending_web_search_queries.pop(0) if pending_web_search_queries else ""
+                            raw_results = part.get("content")
+                            result_count = len(raw_results) if isinstance(raw_results, list) else 0
+                            normalized_results: List[Dict[str, str]] = []
+                            used_urls: set[str] = set()
+                            if isinstance(raw_results, list):
+                                for r in raw_results:
+                                    rec = _normalize_web_search_result_item(r)
+                                    if not rec:
+                                        continue
+                                    u = rec["url"]
+                                    if u in used_urls:
+                                        continue
+                                    used_urls.add(u)
+                                    normalized_results.append(rec)
+                                    if len(normalized_results) >= 12:
+                                        break
+                            web_searches.append({
+                                "query": query or "Web search",
+                                "result_count": result_count,
+                                "results": normalized_results,
+                                "status": "done",
+                            })
+
                         # Special-case: artifacts tool captures deep-research reports.
                         if p_type == "tool_use" and (part.get("name") == "artifacts"):
                             inp = part.get("input")
@@ -385,6 +442,14 @@ def normalize_claude_conversation(
                 elif (not content_text) and tool_fallback:
                     # Only surface tool payloads when we'd otherwise show nothing.
                     content_text = "\n\n".join(tool_fallback)
+                if pending_web_search_queries:
+                    for q in pending_web_search_queries:
+                        web_searches.append({
+                            "query": q or "Web search",
+                            "result_count": 0,
+                            "results": [],
+                            "status": "searching",
+                        })
 
             ts = _iso_to_epoch_seconds(msg.get("created_at")) or _iso_to_epoch_seconds(msg.get("updated_at"))
 
@@ -392,7 +457,7 @@ def normalize_claude_conversation(
                 content_text = content_text.strip()
 
             # Keep messages that contain either visible content or thinking.
-            if not content_text and not thinking_steps:
+            if not content_text and not thinking_steps and not web_searches:
                 continue
 
             out_msg: Dict[str, Any] = {
@@ -404,6 +469,8 @@ def normalize_claude_conversation(
                 out_msg["thinking"] = thinking_steps
             if thinking_summaries:
                 out_msg["thinking_summary"] = "\n".join(thinking_summaries)
+            if web_searches:
+                out_msg["web_searches"] = web_searches
 
             messages_out.append(out_msg)
 

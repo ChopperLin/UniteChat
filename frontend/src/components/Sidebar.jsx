@@ -152,27 +152,82 @@ function Sidebar({
       borderRight: '1px solid #E5E0DB',
       display: 'flex',
       flexDirection: 'column',
-      background: '#EBE9E5',
+      background: '#F4F1EC',
       position: 'relative',
       overflow: 'hidden',
-      boxShadow: '1px 0 3px rgba(0, 0, 0, 0.03)'
+      boxShadow: '1px 0 3px rgba(0, 0, 0, 0.02)'
     }}>
-      {/* 顶部操作栏 - Claude风格，与ChatView标题栏对齐 */}
+      {/* 顶栏：品牌 + 侧栏开关（与主区顶栏统一高度） */}
       <div style={{
-        height: '72px',
+        height: 'var(--topbar-h)',
         padding: '0 14px',
-        borderBottom: '1px solid #D8D4CE',
-        background: '#F2EDE7',
+        borderBottom: 'none',
+        background: '#F8F5F1',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: collapsed ? 'center' : 'space-between',
         gap: '8px',
         minWidth: 0,
         boxSizing: 'border-box'
       }}>
         {!collapsed && (
-          <div ref={dropdownRef} style={{ flex: '1 1 auto', minWidth: 0, position: 'relative' }}>
-            {/* 自定义文件夹选择器 */}
+          <div style={{
+            fontFamily: 'var(--font-reading)',
+            fontSize: '32px',
+            lineHeight: 1,
+            letterSpacing: '-0.012em',
+            color: '#1F1A16',
+            fontWeight: '560',
+            userSelect: 'none',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>
+            UniteChat
+          </div>
+        )}
+        
+        <button
+          onClick={onToggleCollapse}
+          style={{
+            padding: '8px',
+            border: '1px solid #DDD5CB',
+            background: '#FFFFFF',
+            cursor: 'pointer',
+            fontSize: '16px',
+            lineHeight: 1,
+            color: '#5A504A',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '9px',
+            transition: 'background-color 0.06s',
+            minWidth: '32px',
+            minHeight: '32px'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#F3EEE6';
+            e.currentTarget.style.borderColor = '#CEC3B6';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#FFFFFF';
+            e.currentTarget.style.borderColor = '#DDD5CB';
+          }}
+          title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+        >
+          <PanelToggleIcon collapsed={collapsed} />
+        </button>
+      </div>
+
+      {/* 对话列表 - Claude 风格 */}
+      {!collapsed && (
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '12px 10px 10px'
+        }}>
+          <div ref={dropdownRef} style={{ marginBottom: '10px', position: 'relative' }}>
             <div
               onClick={() => setFolderDropdownOpen(!folderDropdownOpen)}
               tabIndex={0}
@@ -189,8 +244,8 @@ function Sidebar({
                 fontWeight: '500',
                 transition: 'background-color 0.08s, border-color 0.08s, box-shadow 0.08s',
                 outline: 'none',
-                boxShadow: folderDropdownOpen 
-                  ? '0 0 0 3px rgba(168, 155, 143, 0.15)' 
+                boxShadow: folderDropdownOpen
+                  ? '0 0 0 3px rgba(168, 155, 143, 0.15)'
                   : '0 1px 3px rgba(42, 37, 35, 0.05)',
                 boxSizing: 'border-box',
                 display: 'flex',
@@ -216,12 +271,10 @@ function Sidebar({
               }}
               title={currentFolder}
             >
-              {/* 文件夹图标 */}
               <span style={{ fontSize: '16px', color: '#8A7F76', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                 <FolderIcon />
               </span>
 
-              {/* 当前选中的文件夹名 */}
               <span style={{
                 flex: 1,
                 minWidth: 0,
@@ -232,13 +285,11 @@ function Sidebar({
                 {ellipsizeMiddle(currentFolder, 24)}
               </span>
 
-              {/* 下拉箭头 */}
               <span style={{ flexShrink: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
                 <ChevronIcon direction={folderDropdownOpen ? 'up' : 'down'} />
               </span>
             </div>
 
-            {/* 下拉菜单 */}
             {folderDropdownOpen && (
               <div style={{
                 position: 'absolute',
@@ -288,47 +339,7 @@ function Sidebar({
               </div>
             )}
           </div>
-        )}
-        
-        <button
-          onClick={onToggleCollapse}
-          style={{
-            padding: '8px',
-            border: '1px solid #D8D4CE',
-            background: '#FBF7F2',
-            cursor: 'pointer',
-            fontSize: '16px',
-            lineHeight: 1,
-            color: '#5A504A',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: '7px',
-            transition: 'background-color 0.06s',
-            minWidth: '32px',
-            minHeight: '32px'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#F2EDE7';
-            e.currentTarget.style.borderColor = '#CFC6BC';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = '#FBF7F2';
-            e.currentTarget.style.borderColor = '#D8D4CE';
-          }}
-          title={collapsed ? '展开侧边栏' : '收起侧边栏'}
-        >
-          <PanelToggleIcon collapsed={collapsed} />
-        </button>
-      </div>
 
-      {/* 对话列表 - Claude 风格 */}
-      {!collapsed && (
-        <div style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '10px'
-        }}>
           {categories.map(category => {
             const isExpanded = categoryExpanded[category] ?? (category === selectedCategory);
             const chatList = safeConversations[category] || [];

@@ -8,6 +8,7 @@
 }
 
 :root {
+  --topbar-h: 64px;
   --bg-base: #f7f5f2;
   --bg-panel: #fdfbf9;
   --bg-soft: #f2ede7;

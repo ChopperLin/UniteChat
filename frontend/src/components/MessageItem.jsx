@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import ThinkingBlock from './ThinkingBlock';
+import WebSearchBlock from './WebSearchBlock';
 import CollapsibleContent from './CollapsibleContent';
 import './MessageItem.css';
 
@@ -9,6 +10,8 @@ function MessageItem({ message }) {
   const [copied, setCopied] = useState(false);
 
   const hasThinking = Boolean(message?.thinking || message?.thinking_summary || message?.thinking_duration);
+  const hasWebSearches = Array.isArray(message?.web_searches) && message.web_searches.length > 0;
+  const hasMainContent = Boolean(message?.content);
 
   const copyToClipboard = async () => {
     const s = message?.content == null ? '' : String(message.content);
@@ -69,14 +72,20 @@ function MessageItem({ message }) {
         </div>
       )}
 
-      {message?.content && (
+      {(hasMainContent || hasWebSearches) && (
         <div className="message-bubble-wrap">
           <div className={`message-bubble ${isUser ? 'message-bubble-user' : 'message-bubble-assistant'}`}>
-            <CollapsibleContent
-              content={message.content}
-              isMarkdown={!isUser}
-              gradientColor={isUser ? '#E9E2D9' : '#FDFBF9'}
-            />
+            {!isUser && hasWebSearches && (
+              <WebSearchBlock searches={message.web_searches} />
+            )}
+
+            {hasMainContent && (
+              <CollapsibleContent
+                content={message.content}
+                isMarkdown={!isUser}
+                gradientColor={isUser ? '#E9E2D9' : '#FDFBF9'}
+              />
+            )}
           </div>
 
           <div className={`message-meta-row ${isUser ? 'meta-user' : 'meta-assistant'}`}>
@@ -85,9 +94,11 @@ function MessageItem({ message }) {
                 {dateLabel}
               </span>
             )}
-            <button type="button" className="message-copy-btn" onClick={copyToClipboard}>
-              {copied ? '已复制' : '复制'}
-            </button>
+            {hasMainContent && (
+              <button type="button" className="message-copy-btn" onClick={copyToClipboard}>
+                {copied ? '已复制' : '复制'}
+              </button>
+            )}
           </div>
         </div>
       )}
