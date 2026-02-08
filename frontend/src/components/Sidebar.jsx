@@ -98,6 +98,10 @@ function WorkspaceIcon({ color = '#5A504A' }) {
   );
 }
 
+function getChatRefKey(category, chatId) {
+  return `${String(category)}::${String(chatId)}`;
+}
+
 function Sidebar({ 
   folders, 
   currentFolder, 
@@ -120,6 +124,8 @@ function Sidebar({
   const dropdownRef = useRef(null);
   const chatMenuRef = useRef(null);
   const profileMenuRef = useRef(null);
+  const chatListScrollRef = useRef(null);
+  const chatItemRefs = useRef(new Map());
   const safeFolders = Array.isArray(folders) ? folders.map((f) => {
     if (typeof f === 'string') {
       return { id: f, name: f, kind: 'auto', path: f };
@@ -192,6 +198,31 @@ function Sidebar({
     };
   }, [profileMenuOpen]);
 
+  useEffect(() => {
+    if (collapsed || !selectedCategory || selectedChat == null) return;
+    setCategoryExpanded((prev) => {
+      if (prev[selectedCategory] === true) return prev;
+      return { ...prev, [selectedCategory]: true };
+    });
+  }, [collapsed, selectedCategory, selectedChat]);
+
+  useEffect(() => {
+    if (collapsed || !selectedCategory || selectedChat == null) return;
+    const key = getChatRefKey(selectedCategory, selectedChat);
+    const rafId = requestAnimationFrame(() => {
+      if (!chatListScrollRef.current) return;
+      const target = chatItemRefs.current.get(key);
+      if (!target) return;
+      target.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+        behavior: 'smooth',
+      });
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [collapsed, selectedCategory, selectedChat, conversations, categoryExpanded]);
+
   return (
     <div className={`sidebar ${collapsed ? 'is-collapsed' : ''}`}>
       {/* 顶栏：品牌 + 侧栏开关（与主区顶栏统一高度） */}
@@ -211,7 +242,7 @@ function Sidebar({
 
       {/* 对话列表 - Claude 风格 */}
       {!collapsed && (
-        <div className="sidebar-list">
+        <div ref={chatListScrollRef} className="sidebar-list">
           <div ref={dropdownRef} className="sidebar-folder-wrap">
             <div
               className={`sidebar-folder-trigger ${folderDropdownOpen ? 'is-open' : ''}`}
@@ -280,6 +311,14 @@ function Sidebar({
                       return (
                         <div
                           key={chat.id}
+                          ref={(node) => {
+                            const refKey = getChatRefKey(category, chat.id);
+                            if (node) {
+                              chatItemRefs.current.set(refKey, node);
+                            } else {
+                              chatItemRefs.current.delete(refKey);
+                            }
+                          }}
                           className={`sidebar-chat-item ${selectedChat === chat.id ? 'is-active' : ''}`}
                           onClick={() => onChatSelect(chat.id)}
                         >
