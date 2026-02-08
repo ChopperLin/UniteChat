@@ -14,6 +14,7 @@ from app.external_sources import (
     ChatSource,
     ClaudeExportCache,
     GeminiActivityCache,
+    detect_gemini_batchexecute_folder,
     detect_claude_folder,
     detect_gemini_folder,
     load_claude_export,
@@ -252,6 +253,8 @@ class ConversationScanner:
             if detect_claude_folder(folder_path):
                 return 'claude'
             if detect_gemini_folder(folder_path):
+                return 'gemini'
+            if detect_gemini_batchexecute_folder(folder_path):
                 return 'gemini'
         except Exception:
             # Fallback to ChatGPT-style

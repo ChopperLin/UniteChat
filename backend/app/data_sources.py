@@ -19,7 +19,11 @@ import shutil
 import time
 import uuid
 
-from app.external_sources import detect_claude_folder, detect_gemini_folder
+from app.external_sources import (
+    detect_claude_folder,
+    detect_gemini_batchexecute_folder,
+    detect_gemini_folder,
+)
 
 
 SUPPORTED_SOURCE_KINDS = {"auto", "chatgpt", "claude", "gemini"}
@@ -162,6 +166,11 @@ class DataSourceStore:
             pass
         try:
             if detect_gemini_folder(folder):
+                return "gemini"
+        except Exception:
+            pass
+        try:
+            if detect_gemini_batchexecute_folder(folder):
                 return "gemini"
         except Exception:
             pass

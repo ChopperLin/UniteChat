@@ -492,6 +492,65 @@ def detect_gemini_folder(folder_path: Path) -> Optional[Path]:
     return find_gemini_activity_file(folder_path)
 
 
+def _iter_json_candidates_for_gemini(folder_path: Path) -> Iterable[Path]:
+    """Yield a bounded set of likely conversation JSON candidates.
+
+    Gemini web exports usually place per-conversation JSONs directly under the
+    export folder. Some user-organized backups may add one extra directory level.
+    """
+    try:
+        for p in folder_path.iterdir():
+            if p.is_file() and p.suffix.lower() == ".json":
+                yield p
+    except Exception:
+        return
+
+    try:
+        for child in folder_path.iterdir():
+            if not child.is_dir():
+                continue
+            try:
+                for p in child.iterdir():
+                    if p.is_file() and p.suffix.lower() == ".json":
+                        yield p
+            except Exception:
+                continue
+    except Exception:
+        return
+
+
+def detect_gemini_batchexecute_folder(folder_path: Path, max_files: int = 24) -> bool:
+    """Best-effort detection for Gemini web per-conversation export folders.
+
+    These exports are not Takeout `MyActivity.*`; each conversation is a JSON file
+    containing keys such as `batchexecute_raw` and `conversation_id`.
+    """
+    if not folder_path.exists() or not folder_path.is_dir():
+        return False
+
+    seen = 0
+    for p in _iter_json_candidates_for_gemini(folder_path):
+        if seen >= max(1, int(max_files)):
+            break
+        seen += 1
+        try:
+            with open(p, "rb") as f:
+                head = (f.read(24 * 1024) or b"").lower()
+        except Exception:
+            continue
+        if not head:
+            continue
+
+        if b'"batchexecute_raw"' in head:
+            return True
+        if b'"source"' in head and b'batchexecute' in head and b'"conversation_id"' in head:
+            return True
+        if b'"fetched_at"' in head and b'hnvqhb' in head:
+            return True
+
+    return False
+
+
 _OUTER_CELL_SPLIT = '<div class="outer-cell'
 
 
