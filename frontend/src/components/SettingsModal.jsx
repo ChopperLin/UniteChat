@@ -517,14 +517,16 @@ export default function SettingsModal({ open, onClose, currentFolder, onSaved })
           <header className="settings-main-header">
             <h2>{activeTab === 'sources' ? 'Data Sources' : 'General'}</h2>
             <div className="settings-main-actions">
-              <button type="button" className="settings-btn subtle" onClick={handleFitScreen}>
-                Fit
-              </button>
               <button type="button" className="settings-btn subtle" onClick={onClose}>
                 Close
               </button>
               {activeTab === 'sources' && (
-                <button type="button" className="settings-btn" onClick={handleSave} disabled={!canSave}>
+                <button
+                  type="button"
+                  className="settings-btn primary"
+                  onClick={handleSave}
+                  disabled={!canSave}
+                >
                   {saving ? 'Saving...' : 'Save'}
                 </button>
               )}
@@ -535,29 +537,35 @@ export default function SettingsModal({ open, onClose, currentFolder, onSaved })
           {!error && info && <div className="settings-info">{info}</div>}
 
           {activeTab === 'general' && (
-            <div className="settings-placeholder">
-              <p>当前版本重点是数据源配置。后续可在这里扩展通用行为。</p>
+            <div className="settings-content">
+              <div className="settings-section-block">
+                <p style={{ color: 'var(--text-subtle)', fontSize: '14px', marginTop: '24px' }}>
+                  General settings are not yet available.
+                </p>
+              </div>
             </div>
           )}
 
           {activeTab === 'sources' && (
             <div className="settings-content">
-              <div className="settings-quick-import">
-                <label>Data Path</label>
-                <div className="settings-quick-import-row">
+              {/* Data Path Section */}
+              <div className="settings-section-block" style={{ marginTop: '24px' }}>
+                <label className="settings-label">Data Path</label>
+                <div className="settings-path-row">
                   <input
-                    className="readonly-path"
+                    className="settings-path-input"
                     value={rootImportPath}
                     readOnly
                     tabIndex={-1}
-                    placeholder="未选择目录"
-                    title={rootImportPath || '未选择目录'}
+                    placeholder="No folder selected"
+                    title={rootImportPath || 'No folder selected'}
                   />
                   <button
                     type="button"
-                    className="settings-btn choose-root"
+                    className="settings-btn subtle"
                     onClick={handlePickRoot}
                     disabled={pickingRoot || importingRoot || loading || saving}
+                    style={{ minWidth: '120px' }}
                   >
                     {pickingRoot ? 'Opening...' : importingRoot ? 'Scanning...' : 'Choose Folder'}
                   </button>
@@ -569,65 +577,71 @@ export default function SettingsModal({ open, onClose, currentFolder, onSaved })
                   className="settings-search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="搜索 Name / Type"
+                  placeholder="Search Name / Type"
                 />
-                <span className="settings-count">
-                  显示 {filteredRows.length} / {sources.length}
-                </span>
+                <div className="settings-count">
+                  {filteredRows.length} / {sources.length}
+                </div>
               </div>
 
               {loading ? (
-                <div className="settings-loading">Loading...</div>
+                <div style={{ padding: '20px', color: 'var(--text-subtle)' }}>Loading...</div>
               ) : (
-                <div className="source-grid-scroll">
-                  <div className="source-grid">
-                    <div className="source-grid-head">
-                      <span>On</span>
-                      <span>Name</span>
-                      <span>Type</span>
-                      <span>Action</span>
-                    </div>
-                    {filteredRows.map(({ src, idx }) => (
-                      <div key={`${src.id || 'new'}-${idx}`} className="source-grid-row">
-                        <label className="source-switch compact">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(src.enabled)}
-                            onChange={(e) => updateSource(idx, { enabled: e.target.checked })}
-                          />
-                        </label>
-
-                        <input
-                          value={src.name}
-                          onChange={(e) => updateSource(idx, { name: e.target.value })}
-                          placeholder="name"
-                        />
-
-                        <select
-                          value={src.kind || 'auto'}
-                          onChange={(e) => updateSource(idx, { kind: e.target.value })}
-                        >
-                          {SOURCE_KINDS.map((kind) => (
-                            <option key={kind.value} value={kind.value}>
-                              {kind.label}
-                            </option>
-                          ))}
-                        </select>
-
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="settings-btn danger tiny"
-                            onClick={() => requestDeleteSource(src, idx)}
-                            disabled={rowActionBusy || saving || importingRoot || pickingRoot || loading}
-                            title={src?.id ? '删除磁盘目录并移除数据源' : '移除未保存行'}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                <div className="source-grid">
+                  <div className="source-grid-head">
+                    <span>On</span>
+                    <span>Name</span>
+                    <span>Type</span>
+                    <span>Action</span>
                   </div>
+                  {filteredRows.map(({ src, idx }) => (
+                    <div key={`${src.id || 'new'}-${idx}`} className="source-grid-row">
+                      <div className="source-grid-row-check">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(src.enabled)}
+                          onChange={(e) => updateSource(idx, { enabled: e.target.checked })}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', margin: 0 }}
+                        />
+                      </div>
+
+                      <input
+                        type="text"
+                        value={src.name}
+                        onChange={(e) => updateSource(idx, { name: e.target.value })}
+                        placeholder="name"
+                      />
+
+                      <select
+                        value={src.kind || 'auto'}
+                        onChange={(e) => updateSource(idx, { kind: e.target.value })}
+                      >
+                        {SOURCE_KINDS.map((kind) => (
+                          <option key={kind.value} value={kind.value}>
+                            {kind.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div className="source-grid-actions">
+                        <button
+                          type="button"
+                          className="settings-btn danger tiny"
+                          onClick={() => requestDeleteSource(src, idx)}
+                          disabled={rowActionBusy || saving || importingRoot || pickingRoot || loading}
+                          title="Remove this source"
+                          style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {filteredRows.length === 0 && (
+                    <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: '13px' }}>
+                      No sources found.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -638,10 +652,10 @@ export default function SettingsModal({ open, onClose, currentFolder, onSaved })
 
       <ConfirmDialog
         open={Boolean(deleteTarget?.open)}
-        title="删除目录？"
-        message={`将永久删除目录及其全部聊天文件：${deleteTarget?.source?.resolved_path || deleteTarget?.source?.path || ''}。此操作不可恢复。`}
-        confirmLabel="删除目录"
-        cancelLabel="取消"
+        title="Delete Source?"
+        message={`This will permanently delete the source: ${deleteTarget?.source?.name}\nPath: ${deleteTarget?.source?.resolved_path || deleteTarget?.source?.path}`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
         danger
         busy={rowActionBusy}
         onCancel={() => setDeleteTarget({ open: false, source: null, index: -1 })}
