@@ -18,6 +18,7 @@
 
 .web-search-header:hover {
   color: #4d4640;
+  opacity: 0.92;
 }
 
 .web-search-header-left {
@@ -28,9 +29,9 @@
 }
 
 .web-search-icon {
-  font-size: 12px;
-  line-height: 1;
-  opacity: 0.75;
+  display: flex;
+  align-items: center;
+  opacity: 0.72;
 }
 
 .web-search-title {
@@ -43,10 +44,10 @@
 }
 
 .web-search-chevron {
-  font-size: 20px;
-  line-height: 1;
-  opacity: 0.72;
-  transition: transform 0.18s ease, color 0.12s ease;
+  display: flex;
+  align-items: center;
+  opacity: 0.6;
+  transition: transform 0.18s ease, opacity 0.12s ease;
   flex-shrink: 0;
   transform: rotate(0deg);
 }
@@ -93,8 +94,9 @@
   left: 7px;
   top: 8px;
   bottom: 7px;
-  width: 1px;
-  background: #d8d1c7;
+  width: 1.5px;
+  background: #ddd7cf;
+  border-radius: 1px;
 }
 
 .web-search-group {
@@ -113,13 +115,15 @@
 
 .web-search-group-icon {
   position: absolute;
-  left: -24px;
+  left: -25px;
   top: 2px;
-  font-size: 11px;
-  line-height: 1;
   color: #7b7269;
   background: var(--bg-base);
-  padding: 0 1px;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
 }
 
 .web-search-query {
@@ -181,13 +185,15 @@
 
 .web-search-done-icon {
   position: absolute;
-  left: -24px;
-  top: 0;
-  font-size: 10px;
-  line-height: 1;
-  color: #7b7269;
+  left: -25px;
+  top: 3px;
+  color: #6a8a5e;
   background: var(--bg-base);
-  padding: 0 1px;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
 }
 
 @media (max-width: 900px) {

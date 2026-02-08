@@ -486,143 +486,93 @@ export default function SearchModal({
             borderTop: '1px solid #E5E0DB',
           }}
         >
-          {!qTrim && (
+          {!qTrim && searchHistory.length > 0 && (
             <div>
               <div style={{ 
-                padding: '28px 24px', 
-                color: '#8A7F76', 
-                fontSize: '14.5px',
-                lineHeight: '1.6'
+                padding: '14px 24px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                background: '#FAF8F6'
               }}>
-                <div style={{ marginBottom: '12px', color: '#5A504A', fontWeight: 500 }}>
-                  输入关键词，实时搜索标题与内容
-                </div>
-                <div style={{ 
-                  fontSize: '13px', 
-                  color: '#A89B8F',
+                <span style={{ 
+                  fontSize: '12.5px', 
+                  color: '#5A504A', 
+                  fontWeight: 600,
                   display: 'flex',
-                  flexDirection: 'column',
+                  alignItems: 'center',
                   gap: '6px'
                 }}>
-                  <div><kbd style={{
-                    padding: '2px 6px',
-                    background: '#F2EDE7',
-                    border: '1px solid #DCD7CF',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    fontFamily: 'monospace',
-                    marginRight: '4px'
-                  }}>↑</kbd><kbd style={{
-                    padding: '2px 6px',
-                    background: '#F2EDE7',
-                    border: '1px solid #DCD7CF',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    fontFamily: 'monospace',
-                    marginRight: '8px'
-                  }}>↓</kbd>选择结果</div>
-                  <div><kbd style={{
-                    padding: '2px 6px',
-                    background: '#F2EDE7',
-                    border: '1px solid #DCD7CF',
-                    borderRadius: '4px',
-                    fontSize: '11px',
-                    fontFamily: 'monospace',
-                    marginRight: '8px'
-                  }}>Enter</kbd>打开对话</div>
-                </div>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ opacity: 0.6 }}>
+                    <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+                    <path d="M7 4V7L9 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                  </svg>
+                  最近搜索
+                </span>
+                <button
+                  onClick={() => {
+                    clearSearchHistory();
+                    setSearchHistory([]);
+                  }}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    color: '#A89B8F',
+                    padding: '6px 10px',
+                    borderRadius: '7px',
+                    transition: 'background-color 0.06s, color 0.06s',
+                    fontWeight: 500
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.color = '#5A504A';
+                    e.target.style.background = 'rgba(42, 37, 35, 0.06)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.color = '#A89B8F';
+                    e.target.style.background = 'transparent';
+                  }}
+                  title="清除历史记录"
+                >
+                  清除
+                </button>
               </div>
-              
-              {/* 搜索历史 - Claude风格 */}
-              {searchHistory.length > 0 && (
-                <div style={{ borderTop: '1px solid #E5E0DB' }}>
-                  <div style={{ 
-                    padding: '14px 24px', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between',
-                    background: '#FAF8F6'
-                  }}>
-                    <span style={{ 
-                      fontSize: '12.5px', 
-                      color: '#5A504A', 
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}>
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ opacity: 0.6 }}>
-                        <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
-                        <path d="M7 4V7L9 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                      </svg>
-                      最近搜索
-                    </span>
-                    <button
-                      onClick={() => {
-                        clearSearchHistory();
-                        setSearchHistory([]);
-                      }}
-                      style={{
-                        border: 'none',
-                        background: 'transparent',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        color: '#A89B8F',
-                        padding: '6px 10px',
-                        borderRadius: '7px',
-                        transition: 'background-color 0.06s, color 0.06s',
-                        fontWeight: 500
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.color = '#5A504A';
-                        e.target.style.background = 'rgba(42, 37, 35, 0.06)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.color = '#A89B8F';
-                        e.target.style.background = 'transparent';
-                      }}
-                      title="清除历史记录"
-                    >
-                      清除
-                    </button>
-                  </div>
-                  <div style={{ padding: '12px 24px 18px' }}>
-                    {searchHistory.map((keyword, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setQ(keyword)}
-                        style={{
-                          display: 'inline-block',
-                          margin: '4px 8px 4px 0',
-                          padding: '8px 16px',
-                          border: '1px solid #E5E0DB',
-                          background: '#FFFFFF',
-                          borderRadius: '20px',
-                          fontSize: '13.5px',
-                          color: '#2A2523',
-                          cursor: 'pointer',
-                          transition: 'background-color 0.06s, border-color 0.06s, box-shadow 0.06s',
-                          fontWeight: '500',
-                          boxShadow: '0 1px 2px rgba(42, 37, 35, 0.04)'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = '#F2EDE7';
-                          e.target.style.borderColor = '#D4C4B0';
-                          e.target.style.boxShadow = '0 2px 4px rgba(42, 37, 35, 0.08)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = '#FFFFFF';
-                          e.target.style.borderColor = '#E5E0DB';
-                          e.target.style.boxShadow = '0 1px 2px rgba(42, 37, 35, 0.04)';
-                        }}
-                        title={`搜索：${keyword}`}
-                      >
-                        {keyword}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div style={{ padding: '12px 24px 18px' }}>
+                {searchHistory.map((keyword, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setQ(keyword)}
+                    style={{
+                      display: 'inline-block',
+                      margin: '4px 8px 4px 0',
+                      padding: '8px 16px',
+                      border: '1px solid #E5E0DB',
+                      background: '#FFFFFF',
+                      borderRadius: '20px',
+                      fontSize: '13.5px',
+                      color: '#2A2523',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.06s, border-color 0.06s, box-shadow 0.06s',
+                      fontWeight: '500',
+                      boxShadow: '0 1px 2px rgba(42, 37, 35, 0.04)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = '#F2EDE7';
+                      e.target.style.borderColor = '#D4C4B0';
+                      e.target.style.boxShadow = '0 2px 4px rgba(42, 37, 35, 0.08)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = '#FFFFFF';
+                      e.target.style.borderColor = '#E5E0DB';
+                      e.target.style.boxShadow = '0 1px 2px rgba(42, 37, 35, 0.04)';
+                    }}
+                    title={`搜索：${keyword}`}
+                  >
+                    {keyword}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import './Sidebar.css';
 
 function ellipsizeMiddle(text, maxLen = 26) {
   if (!text) return '';
@@ -192,74 +193,16 @@ function Sidebar({
   }, [profileMenuOpen]);
 
   return (
-    <div style={{
-      width: collapsed ? '60px' : '280px',
-      transition: 'width 0.3s ease',
-      borderRight: '1px solid #E5E0DB',
-      display: 'flex',
-      flexDirection: 'column',
-      background: '#F4F1EC',
-      position: 'relative',
-      overflow: 'hidden',
-      boxShadow: '1px 0 3px rgba(0, 0, 0, 0.02)'
-    }}>
+    <div className={`sidebar ${collapsed ? 'is-collapsed' : ''}`}>
       {/* 顶栏：品牌 + 侧栏开关（与主区顶栏统一高度） */}
-      <div style={{
-        height: 'var(--topbar-h)',
-        padding: '0 14px',
-        borderBottom: 'none',
-        background: '#F8F5F1',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: collapsed ? 'center' : 'space-between',
-        gap: '8px',
-        minWidth: 0,
-        boxSizing: 'border-box'
-      }}>
+      <div className="sidebar-topbar">
         {!collapsed && (
-          <div style={{
-            fontFamily: 'var(--font-reading)',
-            fontSize: '32px',
-            lineHeight: 1,
-            letterSpacing: '-0.012em',
-            color: '#1F1A16',
-            fontWeight: '560',
-            userSelect: 'none',
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}>
-            UniteChat
-          </div>
+          <div className="sidebar-brand">UniteChat</div>
         )}
         
         <button
+          className="sidebar-toggle-btn"
           onClick={onToggleCollapse}
-          style={{
-            padding: '8px',
-            border: '1px solid #DDD5CB',
-            background: '#FFFFFF',
-            cursor: 'pointer',
-            fontSize: '16px',
-            lineHeight: 1,
-            color: '#5A504A',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: '9px',
-            transition: 'background-color 0.06s',
-            minWidth: '32px',
-            minHeight: '32px'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#F3EEE6';
-            e.currentTarget.style.borderColor = '#CEC3B6';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = '#FFFFFF';
-            e.currentTarget.style.borderColor = '#DDD5CB';
-          }}
           title={collapsed ? '展开侧边栏' : '收起侧边栏'}
         >
           <PanelToggleIcon collapsed={collapsed} />
@@ -268,117 +211,39 @@ function Sidebar({
 
       {/* 对话列表 - Claude 风格 */}
       {!collapsed && (
-        <div style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '12px 10px 10px'
-        }}>
-          <div ref={dropdownRef} style={{ marginBottom: '10px', position: 'relative' }}>
+        <div className="sidebar-list">
+          <div ref={dropdownRef} className="sidebar-folder-wrap">
             <div
+              className={`sidebar-folder-trigger ${folderDropdownOpen ? 'is-open' : ''}`}
               onClick={() => setFolderDropdownOpen(!folderDropdownOpen)}
               tabIndex={0}
-              style={{
-                width: '100%',
-                padding: '9px 12px',
-                border: '1px solid #D8CBBE',
-                borderRadius: '11px',
-                fontSize: '13.5px',
-                lineHeight: 1.2,
-                cursor: 'pointer',
-                background: folderDropdownOpen ? '#FFFFFF' : '#FBF7F2',
-                color: '#2A2523',
-                fontWeight: '500',
-                transition: 'background-color 0.08s, border-color 0.08s, box-shadow 0.08s',
-                outline: 'none',
-                boxShadow: folderDropdownOpen
-                  ? '0 0 0 3px rgba(168, 155, 143, 0.15)'
-                  : '0 1px 3px rgba(42, 37, 35, 0.05)',
-                boxSizing: 'border-box',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                overflow: 'hidden',
-                userSelect: 'none',
-                borderColor: folderDropdownOpen ? '#A89B8F' : '#D8CBBE'
-              }}
-              onMouseEnter={(e) => {
-                if (!folderDropdownOpen) {
-                  e.currentTarget.style.borderColor = '#C4B4A0';
-                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(42, 37, 35, 0.1)';
-                  e.currentTarget.style.background = '#FFFFFF';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!folderDropdownOpen) {
-                  e.currentTarget.style.borderColor = '#D4C4B0';
-                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(42, 37, 35, 0.05)';
-                  e.currentTarget.style.background = '#FDFBF9';
-                }
-              }}
               title={currentFolderLabel}
             >
-              <span style={{ fontSize: '16px', color: '#8A7F76', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+              <span className="sidebar-folder-icon">
                 <FolderIcon />
               </span>
 
-              <span style={{
-                flex: 1,
-                minWidth: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-              }}>
+              <span className="sidebar-folder-label">
                 {ellipsizeMiddle(currentFolderLabel, 24)}
               </span>
 
-              <span style={{ flexShrink: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+              <span className="sidebar-folder-chevron">
                 <ChevronIcon direction={folderDropdownOpen ? 'up' : 'down'} />
               </span>
             </div>
 
             {folderDropdownOpen && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 6px)',
-                left: 0,
-                right: 0,
-                background: '#FFFFFF',
-                border: '1px solid #D4C4B0',
-                borderRadius: '10px',
-                boxShadow: '0 4px 12px rgba(42, 37, 35, 0.15)',
-                maxHeight: '300px',
-                overflowY: 'auto',
-                zIndex: 1000,
-                animation: 'slideDown 0.2s ease'
-              }}>
-                {safeFolders.map((folder, index) => (
+              <div className="sidebar-folder-menu">
+                {safeFolders.map((folder) => (
                   <div
                     key={folder.id}
+                    className={`sidebar-folder-option ${currentFolder === folder.id ? 'is-active' : ''}`}
                     onClick={() => {
                       onFolderChange(folder.id);
                       setFolderDropdownOpen(false);
                     }}
-                    style={{
-                      padding: '10px 14px',
-                      cursor: 'pointer',
-                      fontSize: '13.5px',
-                      color: '#2A2523',
-                      background: currentFolder === folder.id ? '#F2EDE7' : 'transparent',
-                      fontWeight: currentFolder === folder.id ? '600' : '400',
-                      transition: 'background-color 0.06s',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      borderBottom: index === safeFolders.length - 1 ? 'none' : '1px solid #F2EDE7'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = currentFolder === folder.id ? '#E8E3DB' : '#F7F5F2';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = currentFolder === folder.id ? '#F2EDE7' : 'transparent';
-                    }}
-                      title={folder.path || folder.name || folder.id}
-                    >
+                    title={folder.path || folder.name || folder.id}
+                  >
                     {folder.name || folder.id}
                   </div>
                 ))}
@@ -391,47 +256,17 @@ function Sidebar({
             const chatList = safeConversations[category] || [];
             
             return (
-              <div key={category} style={{ marginBottom: '6px' }}>
+              <div key={category} className="sidebar-category">
                 {/* 分类标题 - Claude风格 */}
                 <div
+                  className={`sidebar-category-header ${selectedCategory === category ? 'is-active' : ''}`}
                   onClick={() => {
                     toggleCategory(category, isExpanded);
                     onCategoryChange(category);
                   }}
-                  style={{
-                    padding: '11px 14px',
-                    background: selectedCategory === category ? '#D8D4CE' : 'transparent',
-                    borderRadius: '10px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    transition: 'background-color 0.06s',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    color: '#2A2523',
-                    letterSpacing: '-0.01em'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (selectedCategory !== category) {
-                      e.currentTarget.style.background = 'rgba(42, 37, 35, 0.05)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedCategory !== category) {
-                      e.currentTarget.style.background = 'transparent';
-                    }
-                  }}
                 >
                   <span>{category}</span>
-                  <span style={{
-                    fontSize: '12px',
-                    color: '#8A7F76',
-                    marginLeft: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}>
+                  <span className="sidebar-category-meta">
                     <ChevronIcon direction={isExpanded ? 'down' : 'right'} size={10} color="#8A7F76" />
                     {chatList.length}
                   </span>
@@ -439,81 +274,28 @@ function Sidebar({
 
                 {/* 对话列表 - Claude风格 */}
                 {isExpanded && (
-                  <div style={{
-                    marginLeft: '10px',
-                    marginTop: '4px'
-                  }}>
+                  <div className="sidebar-chat-list">
                     {chatList.map(chat => {
                       const canEdit = (chat?.can_edit !== false);
                       return (
                         <div
                           key={chat.id}
+                          className={`sidebar-chat-item ${selectedChat === chat.id ? 'is-active' : ''}`}
                           onClick={() => onChatSelect(chat.id)}
-                          style={{
-                            padding: '10px 14px',
-                            marginBottom: '3px',
-                            borderRadius: '10px',
-                            cursor: 'pointer',
-                            background: selectedChat === chat.id ? '#D0C8BE' : 'transparent',
-                            transition: 'background-color 0.06s',
-                            fontSize: '13.5px',
-                            color: '#3A3330',
-                            fontWeight: selectedChat === chat.id ? '500' : '400',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            minWidth: 0,
-                            position: 'relative'
-                          }}
-                          onMouseEnter={(e) => {
-                            if (selectedChat !== chat.id) {
-                              e.currentTarget.style.background = 'rgba(42, 37, 35, 0.04)';
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (selectedChat !== chat.id) {
-                              e.currentTarget.style.background = 'transparent';
-                            }
-                          }}
                         >
-                        <span style={{
-                          flex: '1 1 auto',
-                          minWidth: 0,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
-                        }}>
+                        <span className="sidebar-chat-title">
                           {chat.title}
                         </span>
 
                         {canEdit && (
                         <button
+                          className="sidebar-chat-more-btn"
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
                             const key = { category, id: chat.id };
                             const same = chatMenuOpen && chatMenuOpen.category === key.category && chatMenuOpen.id === key.id;
                             setChatMenuOpen(same ? null : key);
-                          }}
-                          style={{
-                            flex: '0 0 auto',
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            padding: '2px 6px',
-                            borderRadius: '8px',
-                            color: '#6B615B',
-                            fontSize: '16px',
-                            lineHeight: 1,
-                            opacity: 0.75
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'rgba(42, 37, 35, 0.06)';
-                            e.currentTarget.style.opacity = 1;
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'transparent';
-                            e.currentTarget.style.opacity = 0.75;
                           }}
                           title="更多操作"
                         >
@@ -524,94 +306,38 @@ function Sidebar({
                         {canEdit && chatMenuOpen && chatMenuOpen.category === category && chatMenuOpen.id === chat.id && (
                           <div
                             ref={chatMenuRef}
+                            className="sidebar-context-menu"
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
                             }}
-                            style={{
-                              position: 'absolute',
-                              right: '10px',
-                              top: '100%',
-                              marginTop: '6px',
-                              zIndex: 50,
-                              background: '#FFFFFF',
-                              border: '1px solid #E5E0DB',
-                              borderRadius: '12px',
-                              boxShadow: '0 10px 30px rgba(42, 37, 35, 0.12)',
-                              padding: '8px',
-                              minWidth: '150px'
-                            }}
                           >
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div className="sidebar-context-inner">
                             <button
+                              className="sidebar-context-btn"
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 if (typeof onChatRename === 'function') onChatRename(chat.id, category, chat.title);
                                 setChatMenuOpen(null);
                               }}
-                              style={{
-                                width: '100%',
-                                border: '1px solid #E9E3DC',
-                                cursor: 'pointer',
-                                padding: '9px 11px',
-                                borderRadius: '10px',
-                                background: '#FFFFFF',
-                                color: '#2A2523',
-                                fontWeight: '560',
-                                fontSize: '13.5px',
-                                textAlign: 'left',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = '#F7F3EE';
-                                e.currentTarget.style.borderColor = '#DDD3C8';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = '#FFFFFF';
-                                e.currentTarget.style.borderColor = '#E9E3DC';
-                              }}
                               title="重命名"
                             >
-                              <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><RenameIcon color="#6B615B" /></span>
+                              <span className="sidebar-context-icon"><RenameIcon color="#6B615B" /></span>
                               <span>重命名</span>
                             </button>
 
                             <button
+                              className="sidebar-context-btn is-danger"
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 if (typeof onChatDelete === 'function') onChatDelete(chat.id, category);
                                 setChatMenuOpen(null);
                               }}
-                              style={{
-                                width: '100%',
-                                border: '1px solid #F0DAD5',
-                                cursor: 'pointer',
-                                padding: '9px 11px',
-                                borderRadius: '10px',
-                                background: '#FFF9F8',
-                                color: '#8B2E1F',
-                                fontWeight: '560',
-                                fontSize: '13.5px',
-                                textAlign: 'left',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = '#FDEDE9';
-                                e.currentTarget.style.borderColor = '#E9BEB6';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = '#FFF9F8';
-                                e.currentTarget.style.borderColor = '#F0DAD5';
-                              }}
                               title="删除"
                             >
-                              <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><TrashIcon /></span>
+                              <span className="sidebar-context-icon"><TrashIcon /></span>
                               <span>删除</span>
                             </button>
                             </div>
@@ -628,48 +354,17 @@ function Sidebar({
         </div>
       )}
 
-      <div
-        ref={profileMenuRef}
-        style={{
-          position: 'relative',
-          borderTop: '1px solid #E5E0DB',
-          padding: collapsed ? '10px 8px' : '10px',
-          background: '#F8F5F1'
-        }}
-      >
+      <div ref={profileMenuRef} className="sidebar-bottom">
         <button
           type="button"
+          className="sidebar-workspace-btn"
           onClick={() => setProfileMenuOpen((v) => !v)}
-          style={{
-            width: '100%',
-            border: '1px solid #DDD5CB',
-            background: '#FFFFFF',
-            borderRadius: '11px',
-            cursor: 'pointer',
-            minHeight: '40px',
-            padding: collapsed ? '0' : '8px 10px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: collapsed ? 'center' : 'space-between',
-            color: '#2A2523',
-            fontSize: '13.5px',
-            fontWeight: 600,
-            gap: '8px'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#F7F3EE';
-            e.currentTarget.style.borderColor = '#CEC3B6';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = '#FFFFFF';
-            e.currentTarget.style.borderColor = '#DDD5CB';
-          }}
           title="工作区菜单"
         >
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <span className="sidebar-workspace-content">
             <WorkspaceIcon />
             {!collapsed && (
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <span className="sidebar-workspace-label">
                 本地工作区
               </span>
             )}
@@ -678,55 +373,17 @@ function Sidebar({
         </button>
 
         {profileMenuOpen && (
-          <div
-            style={{
-              position: 'absolute',
-              left: collapsed ? 'calc(100% + 6px)' : '10px',
-              right: collapsed ? 'auto' : '10px',
-              bottom: 'calc(100% + 6px)',
-              minWidth: collapsed ? '170px' : 'auto',
-              background: '#FFFFFF',
-              border: '1px solid #E5E0DB',
-              borderRadius: '12px',
-              boxShadow: '0 10px 30px rgba(42, 37, 35, 0.12)',
-              padding: '8px',
-              zIndex: 1200,
-              transformOrigin: collapsed ? 'left bottom' : 'center bottom',
-              animation: 'popInSoft 0.18s cubic-bezier(0.22, 1, 0.36, 1)'
-            }}
-          >
+          <div className="sidebar-workspace-popup">
             <button
               type="button"
+              className="sidebar-context-btn"
               onClick={() => {
                 if (typeof onOpenSettings === 'function') onOpenSettings();
                 setProfileMenuOpen(false);
               }}
-              style={{
-                width: '100%',
-                border: '1px solid #E9E3DC',
-                cursor: 'pointer',
-                padding: '9px 11px',
-                borderRadius: '10px',
-                background: '#FFFFFF',
-                color: '#2A2523',
-                fontWeight: '560',
-                fontSize: '13.5px',
-                textAlign: 'left',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#F7F3EE';
-                e.currentTarget.style.borderColor = '#DDD3C8';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.borderColor = '#E9E3DC';
-              }}
               title="设置"
             >
-              <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="sidebar-context-icon">
                 <CogIcon />
               </span>
               <span>Settings</span>

@@ -92,7 +92,7 @@ function MessageItem({ message }) {
               <CollapsibleContent
                 content={message.content}
                 isMarkdown={!isUser}
-                gradientColor={isUser ? '#E9E2D9' : '#FDFBF9'}
+                gradientColor={isUser ? '#EDE8E1' : '#FDFBF9'}
               />
             )}
           </div>
